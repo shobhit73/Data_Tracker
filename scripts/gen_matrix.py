@@ -33,6 +33,10 @@ FEIN_NAME = {
 "333274309":"Urban Box Logistics LLC","884109370":"Valuable Logistics Inc","811064737":"Wheels for Work LLC",
 }
 
+# SocCode / CompanyJobTitle / W2DeliveryMethod are deliberately excluded — nobody runs
+# those onboarding APIs (CompanyJobTitle and W2DeliveryMethod have zero runs on record,
+# SocCode has 6), so showing them made every client read as having a gap.
+# The rows still exist in api_activity_runs; this list only controls what's displayed.
 MODULES = [
     ("EmployeeCensus", "Census"),
     ("PriorPayroll", "Prior Payroll"),
@@ -42,9 +46,6 @@ MODULES = [
     ("EmployeeDeductions", "Deductions"),
     ("WorkerCompensation", "Worker's Comp"),
     ("EmployeeContributions", "Contributions"),
-    ("SocCode", "SOC Code"),
-    ("CompanyJobTitle", "Company Job Title"),
-    ("W2DeliveryMethod", "W2 Delivery Method"),
 ]
 
 # --- gather vendor per fein from raw CSVs (most common vendor value wins) ---

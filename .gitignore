@@ -1,0 +1,17 @@
+.vercel
+.env*.local
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Scratch files from working sessions (extracted fragments, downloaded copies of
+# the deployed page) — not project sources.
+scripts/_*.html
+
+# Raw export of the internal "Uzio Implementation Onboarding Tracker" sheet.
+# Deliberately NOT committed: this repository is public, and the export carries
+# internal client notes plus personal contact details (private email addresses
+# and a phone number) that appear in some DSP Name cells.
+# Regenerate it locally with scripts/decode_dsp_sheet.py when needed.
+data/shruti_dsp_implementation.csv

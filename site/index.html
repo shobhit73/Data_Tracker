@@ -1,0 +1,1460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSP Ops Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap">
+<style>
+:root{
+  --uzio-color-action:#0b98d8; --uzio-color-action-hover:#0985bd; --uzio-color-action-bg-soft:#e6f6fe;
+  --uzio-color-orange:#f7901f; --uzio-color-orange-bg-soft:#fef0e1;
+  --uzio-color-nav:#0e2238;
+  --uzio-color-bg-page:#f1eee7; --uzio-color-bg-card:#ffffff; --uzio-color-bg-table-head:#f8fafc;
+  --uzio-color-bg-row-hover:#f4f7fa; --uzio-color-bg-subtle:#f8fafc;
+  --uzio-color-border:#D0DBE3; --uzio-color-border-light:#e5eaef; --uzio-color-divider:#eef2f6;
+  --uzio-color-text-heading:#23272A; --uzio-color-text-body:#44494E; --uzio-color-text-muted:#6b7280;
+  --uzio-color-text-faint:#a3adb8; --uzio-color-text-white:#ffffff;
+  --uzio-color-success:#2db343; --uzio-color-success-bg:rgba(45,179,67,.10);
+  --uzio-color-error:#a94342; --uzio-color-error-bg:rgba(169,67,66,.10);
+  --uzio-color-warning:#f7901f; --uzio-color-warning-bg:rgba(247,144,31,.12);
+  --uzio-color-dot-critical:#EC4643; --uzio-color-dot-warning:#FFB347; --uzio-color-dot-alert:var(--uzio-color-action);
+  --uzio-color-info-bg:#d9edf7; --uzio-color-info-border:#98d6ea; --uzio-color-info-text:#31708f;
+  --uzio-font-family:'Nunito','Segoe UI',Helvetica,Arial,sans-serif;
+  --uzio-radius-sm:4px; --uzio-radius-md:6px; --uzio-radius-lg:8px; --uzio-radius-pill:999px;
+  --uzio-shadow-card:0 1px 3px rgba(16,24,40,.06);
+  --uzio-motion-base:200ms cubic-bezier(.4,0,.2,1);
+
+  --uzio-icon-dashboard: url("data:image/svg+xml,%3Csvg width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M3 13H11V3H3V13ZM3 21H11V15H3V21ZM13 21H21V11H13V21ZM13 3V9H21V3H13Z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+  --uzio-icon-file: url("data:image/svg+xml,%3Csvg width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M20.41 8.41L15.58 3.58C15.205 3.20808 14.6981 2.99958 14.17 3H5C4.47005 3.00158 3.96227 3.21281 3.58753 3.58754C3.2128 3.96227 3.00158 4.47005 3 5L3 19C3.00158 19.5299 3.2128 20.0377 3.58753 20.4125C3.96227 20.7872 4.47005 20.9984 5 21H19C19.5299 20.9984 20.0377 20.7872 20.4125 20.4125C20.7872 20.0377 20.9984 19.5299 21 19V9.83C20.9999 9.56614 20.9477 9.30489 20.8465 9.06122C20.7452 8.81756 20.5969 8.59626 20.41 8.41ZM7 7H14V9H7V7ZM17 17H7V15H17V17ZM17 13H7V11H17V13Z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+  --uzio-icon-hr-compliance: url("data:image/svg+xml,%3Csvg width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M18.4899 4.10883L13.4999 2.23883C12.5171 1.92885 11.4627 1.92885 10.4799 2.23883L5.4899 4.10883C4.89536 4.36555 4.38453 4.78351 4.01517 5.31545C3.64582 5.84739 3.4327 6.47207 3.3999 7.11883V14.5488C3.43884 15.2098 3.61236 15.8559 3.90985 16.4474C4.20733 17.0389 4.6225 17.5635 5.1299 17.9888L9.4299 21.1988C10.1869 21.7167 11.0827 21.9937 11.9999 21.9937C12.9171 21.9937 13.8129 21.7167 14.5699 21.1988L18.8699 17.9888C19.3773 17.5635 19.7925 17.0389 20.09 16.4474C20.3874 15.8559 20.561 15.2098 20.5999 14.5488V7.11883C20.5591 6.47156 20.3406 5.84809 19.9683 5.31702C19.596 4.78596 19.0845 4.36789 18.4899 4.10883ZM11.9199 7.02883C12.4774 7.03188 13.0117 7.25281 13.4086 7.64443C13.8054 8.03606 14.0334 8.56733 14.0439 9.12479C14.0543 9.68224 13.8464 10.2217 13.4645 10.6279C13.0825 11.0341 12.5569 11.2749 11.9999 11.2988H11.8999C11.3337 11.2962 10.7917 11.0687 10.3932 10.6664C9.99464 10.2642 9.77225 9.72007 9.7749 9.15383C9.77755 8.5876 10.005 8.0456 10.4073 7.64709C10.8096 7.24857 11.3537 7.02618 11.9199 7.02883ZM14.1799 16.3588C13.5231 16.767 12.7632 16.9786 11.9899 16.9688C11.2159 16.9848 10.4542 16.7727 9.7999 16.3588C9.2299 15.9788 8.2289 15.5728 8.2189 15.0028C8.2089 14.4328 9.2299 13.7888 9.7999 13.4088C10.4647 13.016 11.2227 12.8088 11.9949 12.8088C12.7671 12.8088 13.5251 13.016 14.1899 13.4088C14.7599 13.7888 15.8339 14.4328 15.8339 15.0028C15.8339 15.5728 14.7499 15.9788 14.1799 16.3588Z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+  --uzio-icon-task: url("data:image/svg+xml,%3Csvg width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M10.125 7.46936H21.375C21.5406 7.46883 21.6992 7.40281 21.8163 7.28572C21.9334 7.16862 21.9995 7.00995 22 6.84436V5.28236C21.9995 5.11676 21.9334 4.95809 21.8163 4.841C21.6992 4.7239 21.5406 4.65788 21.375 4.65736H10.125C9.95938 4.65788 9.80072 4.7239 9.68362 4.841C9.56652 4.95809 9.50051 5.11676 9.49998 5.28236V6.84436C9.50051 7.00995 9.56652 7.16862 9.68362 7.28572C9.80072 7.40281 9.95938 7.46883 10.125 7.46936ZM10.125 13.7194H21.375C21.5406 13.7188 21.6992 13.6528 21.8163 13.5357C21.9334 13.4186 21.9995 13.26 22 13.0944V11.5314C21.9995 11.3658 21.9334 11.2071 21.8163 11.09C21.6992 10.9729 21.5406 10.9069 21.375 10.9064H10.125C9.95938 10.9069 9.80072 10.9729 9.68362 11.09C9.56652 11.2071 9.50051 11.3658 9.49998 11.5314V13.0934C9.50024 13.2591 9.56614 13.4181 9.68327 13.5354C9.80039 13.6527 9.95921 13.7188 10.125 13.7194ZM10.125 19.9694H21.375C21.5406 19.9688 21.6992 19.9028 21.8163 19.7857C21.9334 19.6686 21.9995 19.51 22 19.3444V17.7814C21.9995 17.6158 21.9334 17.4571 21.8163 17.34C21.6992 17.2229 21.5406 17.1569 21.375 17.1564H10.125C9.95938 17.1569 9.80072 17.2229 9.68362 17.34C9.56652 17.4571 9.50051 17.6158 9.49998 17.7814V19.3434C9.50051 19.509 9.56652 19.6676 9.68362 19.7847C9.80072 19.9018 9.95938 19.9688 10.125 19.9694ZM4.50098 16.6874C4.0037 16.6874 3.52678 16.8849 3.17515 17.2365C2.82352 17.5882 2.62598 18.0651 2.62598 18.5624C2.62598 19.0596 2.82352 19.5366 3.17515 19.8882C3.52678 20.2398 4.0037 20.4374 4.50098 20.4374C4.99826 20.4374 5.47517 20.2398 5.8268 19.8882C6.17843 19.5366 6.37598 19.0596 6.37598 18.5624C6.37598 18.0651 6.17843 17.5882 5.8268 17.2365C5.47517 16.8849 4.99826 16.6874 4.50098 16.6874ZM8.11398 5.00836L5.29398 7.82836L4.68498 8.43736C4.59214 8.52512 4.46923 8.57403 4.34148 8.57403C4.21372 8.57403 4.09081 8.52512 3.99798 8.43736L2.13798 6.58736C2.09432 6.54379 2.05968 6.49204 2.03604 6.43507C2.01241 6.3781 2.00024 6.31703 2.00024 6.25536C2.00024 6.19368 2.01241 6.13261 2.03604 6.07564C2.05968 6.01867 2.09432 5.96692 2.13798 5.92336L2.75098 5.31036C2.79454 5.2667 2.84629 5.23206 2.90326 5.20842C2.96023 5.18479 3.0213 5.17262 3.08298 5.17262C3.14466 5.17262 3.20573 5.18479 3.2627 5.20842C3.31967 5.23206 3.37141 5.2667 3.41498 5.31036L4.30198 6.17336L6.78998 3.70036C6.83354 3.65669 6.88529 3.62206 6.94226 3.59842C6.99923 3.57479 7.0603 3.56262 7.12198 3.56262C7.18366 3.56262 7.24473 3.57479 7.3017 3.59842C7.35867 3.62206 7.41041 3.65669 7.45398 3.70036L8.11798 4.34436C8.20466 4.43338 8.25283 4.55293 8.25208 4.67718C8.25133 4.80142 8.20172 4.92039 8.11398 5.00836ZM8.11398 11.2424L5.29398 14.0624L4.68098 14.6754C4.58814 14.7631 4.46523 14.812 4.33748 14.812C4.20972 14.812 4.08681 14.7631 3.99398 14.6754L2.13798 12.8204C2.09432 12.7768 2.05968 12.725 2.03604 12.6681C2.01241 12.6111 2.00024 12.55 2.00024 12.4884C2.00024 12.4267 2.01241 12.3656 2.03604 12.3086C2.05968 12.2517 2.09432 12.1999 2.13798 12.1564L2.75098 11.5434C2.79454 11.4997 2.84629 11.4651 2.90326 11.4414C2.96023 11.4178 3.0213 11.4056 3.08298 11.4056C3.14466 11.4056 3.20573 11.4178 3.2627 11.4414C3.31967 11.4651 3.37141 11.4997 3.41498 11.5434L4.30198 12.4064L6.78998 9.91836C6.83354 9.8747 6.88529 9.84006 6.94226 9.81642C6.99923 9.79279 7.0603 9.78062 7.12198 9.78062C7.18366 9.78062 7.24473 9.79279 7.3017 9.81642C7.35867 9.84006 7.41041 9.8747 7.45398 9.91836L8.11798 10.5874C8.20518 10.675 8.25413 10.7937 8.25413 10.9174C8.25413 11.041 8.20518 11.1597 8.11798 11.2474L8.11398 11.2424Z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+  --uzio-icon-alert-bulb: url("data:image/svg+xml,%3Csvg width=%2730%27 height=%2730%27 viewBox=%270 0 30 30%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M0 15C0 12.0333 0.879735 9.13319 2.52796 6.66645C4.17618 4.19972 6.51886 2.27713 9.25975 1.14181C12.0006 0.00649929 15.0166 -0.290551 17.9264 0.288228C20.8361 0.867006 23.5088 2.29562 25.6066 4.3934C27.7044 6.49119 29.133 9.16394 29.7118 12.0737C30.2906 14.9834 29.9935 17.9994 28.8582 20.7403C27.7229 23.4812 25.8003 25.8238 23.3336 27.4721C20.8668 29.1203 17.9667 30 15 30C11.0218 30 7.20644 28.4197 4.3934 25.6066C1.58035 22.7936 0 18.9783 0 15ZM2 15C2 17.5712 2.76244 20.0846 4.1909 22.2224C5.61935 24.3603 7.64968 26.0265 10.0251 27.0104C12.4006 27.9944 15.0144 28.2518 17.5362 27.7502C20.0579 27.2486 22.3743 26.0105 24.1924 24.1924C26.0105 22.3743 27.2486 20.0579 27.7502 17.5362C28.2518 15.0144 27.9944 12.4006 27.0104 10.0251C26.0265 7.64968 24.3603 5.61936 22.2224 4.1909C20.0846 2.76244 17.5712 2.00001 15 2.00001C11.5533 2.00371 8.24887 3.37454 5.8117 5.81171C3.37453 8.24888 2.00371 11.5533 2 15ZM13.316 22.614H16.683C16.5184 22.9169 16.2751 23.1698 15.9789 23.346C15.6826 23.5222 15.3442 23.6152 14.9995 23.6152C14.6548 23.6152 14.3164 23.5222 14.0201 23.346C13.7239 23.1698 13.4806 22.9169 13.316 22.614ZM13.25 21.625C13.1431 21.6198 13.0422 21.5736 12.9684 21.4961C12.8946 21.4185 12.8534 21.3156 12.8534 21.2085C12.8534 21.1014 12.8946 20.9985 12.9684 20.921C13.0422 20.8434 13.1431 20.7972 13.25 20.792H16.75C16.8569 20.7972 16.9578 20.8434 17.0316 20.921C17.1054 20.9985 17.1466 21.1014 17.1466 21.2085C17.1466 21.3156 17.1054 21.4185 17.0316 21.4961C16.9578 21.5736 16.8569 21.6198 16.75 21.625H13.25ZM13.166 19.792C12.993 19.7801 12.8302 19.706 12.7076 19.5834C12.585 19.4608 12.5109 19.298 12.499 19.125C12.499 16.292 9.999 15.907 9.999 12.291C9.999 10.9649 10.5258 9.69316 11.4635 8.75547C12.4011 7.81779 13.6729 7.29101 14.999 7.29101C16.3251 7.29101 17.5969 7.81779 18.5345 8.75547C19.4722 9.69316 19.999 10.9649 19.999 12.291C19.999 15.906 17.499 16.291 17.499 19.125C17.4871 19.298 17.413 19.4608 17.2904 19.5834C17.1678 19.706 17.005 19.7801 16.832 19.792H13.166Z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+  --uzio-icon-help: url("data:image/svg+xml,%3Csvg width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M12.0009 2.41895C10.106 2.41875 8.25348 2.9805 6.67776 4.03315C5.10204 5.0858 3.87386 6.58208 3.14855 8.33276C2.42323 10.0834 2.23335 12.0099 2.60292 13.8685C2.9725 15.7271 3.88492 17.4344 5.22481 18.7744C6.56469 20.1144 8.27186 21.027 10.1304 21.3968C11.989 21.7665 13.9155 21.5769 15.6662 20.8517C17.417 20.1266 18.9134 18.8986 19.9662 17.323C21.019 15.7474 21.5809 13.8949 21.5809 11.9999C21.5812 10.7418 21.3336 9.49585 20.8523 8.33338C20.3709 7.1709 19.6653 6.11464 18.7757 5.22492C17.8861 4.33521 16.8299 3.62946 15.6674 3.14801C14.505 2.66655 13.2591 2.41881 12.0009 2.41895ZM11.801 16.4189C11.6149 16.4111 11.4353 16.3488 11.2844 16.2397C11.1335 16.1306 11.018 15.9796 10.9522 15.8054C10.8864 15.6312 10.8733 15.4415 10.9144 15.2599C10.9555 15.0783 11.0491 14.9128 11.1835 14.784C11.318 14.6551 11.4873 14.5686 11.6704 14.5352C11.8536 14.5018 12.0426 14.5229 12.2138 14.596C12.3851 14.6691 12.5311 14.7909 12.6337 14.9463C12.7363 15.1016 12.791 15.2838 12.7909 15.4699C12.7897 15.5977 12.763 15.7238 12.7124 15.8411C12.6619 15.9584 12.5885 16.0644 12.4965 16.153C12.4045 16.2417 12.2958 16.3111 12.1768 16.3572C12.0577 16.4034 11.9306 16.4254 11.801 16.4189ZM13.653 11.9559C12.853 12.4209 12.58 12.7619 12.58 13.3559V13.7199H10.9799L10.966 13.3199C10.9037 12.91 10.9759 12.4909 11.1719 12.1254C11.3679 11.76 11.677 11.4679 12.0529 11.2929C12.8309 10.8279 13.158 10.5329 13.158 9.96195C13.142 9.81541 13.0973 9.67347 13.0263 9.54429C12.9554 9.4151 12.8595 9.30123 12.7444 9.20922C12.6292 9.11721 12.497 9.04888 12.3554 9.00816C12.2137 8.96744 12.0654 8.95513 11.919 8.97195C11.7629 8.96264 11.6066 8.98482 11.4593 9.03718C11.312 9.08955 11.1768 9.17101 11.0617 9.27673C10.9465 9.38245 10.8538 9.51025 10.7891 9.65254C10.7244 9.79483 10.689 9.94868 10.6849 10.1049H9.05295C9.08495 8.62195 10.181 7.57195 12.033 7.57195C13.76 7.57195 14.948 8.52995 14.948 9.90695C14.95 10.3366 14.8294 10.7578 14.6001 11.1212C14.3709 11.4846 14.0426 11.7749 13.6539 11.9579L13.653 11.9559Z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+  --uzio-icon-refresh: url("data:image/svg+xml,%3Csvg width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-8 3.58-8 8s3.58 8 8 8a8.013 8.013 0 007.75-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+  --uzio-icon-transfer: url("data:image/svg+xml,%3Csvg width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cpath d=%27M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z%27 fill=%27currentColor%27/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark){
+  :root{
+    --uzio-color-bg-page:#15191c; --uzio-color-bg-card:#1e2429; --uzio-color-bg-table-head:#232a30;
+    --uzio-color-bg-row-hover:#262e35; --uzio-color-bg-subtle:#232a30;
+    --uzio-color-border:#333d45; --uzio-color-border-light:#2b333a; --uzio-color-divider:#272f36;
+    --uzio-color-text-heading:#eef1f3; --uzio-color-text-body:#c3cad0; --uzio-color-text-muted:#8b969f;
+    --uzio-color-text-faint:#69747d;
+    --uzio-color-info-bg:#16323f; --uzio-color-info-border:#245b70; --uzio-color-info-text:#9fd4e8;
+  }
+}
+:root[data-theme="dark"]{
+  --uzio-color-bg-page:#15191c; --uzio-color-bg-card:#1e2429; --uzio-color-bg-table-head:#232a30;
+  --uzio-color-bg-row-hover:#262e35; --uzio-color-bg-subtle:#232a30;
+  --uzio-color-border:#333d45; --uzio-color-border-light:#2b333a; --uzio-color-divider:#272f36;
+  --uzio-color-text-heading:#eef1f3; --uzio-color-text-body:#c3cad0; --uzio-color-text-muted:#8b969f;
+  --uzio-color-text-faint:#69747d;
+  --uzio-color-info-bg:#16323f; --uzio-color-info-border:#245b70; --uzio-color-info-text:#9fd4e8;
+}
+:root[data-theme="light"]{
+  --uzio-color-bg-page:#f1eee7; --uzio-color-bg-card:#ffffff; --uzio-color-bg-table-head:#f8fafc;
+  --uzio-color-bg-row-hover:#f4f7fa; --uzio-color-bg-subtle:#f8fafc;
+  --uzio-color-border:#D0DBE3; --uzio-color-border-light:#e5eaef; --uzio-color-divider:#eef2f6;
+  --uzio-color-text-heading:#23272A; --uzio-color-text-body:#44494E; --uzio-color-text-muted:#6b7280;
+  --uzio-color-text-faint:#a3adb8;
+  --uzio-color-info-bg:#d9edf7; --uzio-color-info-border:#98d6ea; --uzio-color-info-text:#31708f;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;font-family:var(--uzio-font-family);font-size:14px;line-height:20px;
+  color:var(--uzio-color-text-body);background:var(--uzio-color-bg-page);
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+h1,h2,h3,h4{margin:0;color:var(--uzio-color-text-heading)}
+.tnum{font-variant-numeric:tabular-nums}
+.nil{color:var(--uzio-color-text-faint)}
+
+.uzio-icon{display:inline-block;width:24px;height:24px;background-color:currentColor;
+  -webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  -webkit-mask-size:contain;mask-size:contain;flex-shrink:0}
+.uzio-icon--sm{width:18px;height:18px}
+.uzio-icon--dashboard{-webkit-mask-image:var(--uzio-icon-dashboard);mask-image:var(--uzio-icon-dashboard)}
+.uzio-icon--file{-webkit-mask-image:var(--uzio-icon-file);mask-image:var(--uzio-icon-file)}
+.uzio-icon--hr-compliance{-webkit-mask-image:var(--uzio-icon-hr-compliance);mask-image:var(--uzio-icon-hr-compliance)}
+.uzio-icon--task{-webkit-mask-image:var(--uzio-icon-task);mask-image:var(--uzio-icon-task)}
+.uzio-icon--alert-bulb{-webkit-mask-image:var(--uzio-icon-alert-bulb);mask-image:var(--uzio-icon-alert-bulb)}
+.uzio-icon--help{-webkit-mask-image:var(--uzio-icon-help);mask-image:var(--uzio-icon-help)}
+.uzio-icon--refresh{-webkit-mask-image:var(--uzio-icon-refresh);mask-image:var(--uzio-icon-refresh)}
+.uzio-icon--transfer{-webkit-mask-image:var(--uzio-icon-transfer);mask-image:var(--uzio-icon-transfer)}
+
+/* ---------- shell ---------- */
+.uzio-sidebar-x{position:fixed;top:0;left:0;bottom:0;width:240px;background:var(--uzio-color-nav);
+  color:var(--uzio-color-text-white);padding:16px 0;z-index:11;display:flex;flex-direction:column;overflow-y:auto}
+.uzio-sidebar-x__brand{padding:0 20px 18px;font-size:17px;font-weight:700;letter-spacing:1px;color:var(--uzio-color-action)}
+.uzio-sidebar-x__brand span{color:#fff;font-weight:400;opacity:.7;font-size:12px;letter-spacing:.4px;display:block;margin-top:2px}
+.uzio-sidebar-x__item{display:flex;align-items:center;gap:12px;padding:10px 16px;color:rgba(255,255,255,.85);
+  font-size:14px;cursor:pointer;border:none;border-left:3px solid transparent;background:none;width:100%;
+  text-align:left;font-family:inherit;transition:background var(--uzio-motion-base)}
+.uzio-sidebar-x__item:hover{background:rgba(255,255,255,.06);color:#fff}
+.uzio-sidebar-x__item--active{background:rgba(11,152,216,.15);color:#fff;border-left-color:var(--uzio-color-action);font-weight:600}
+.uzio-sidebar-x__foot{margin-top:auto;padding:14px 20px 4px;font-size:11px;line-height:1.6;
+  color:rgba(255,255,255,.45);border-top:1px solid rgba(255,255,255,.08)}
+
+.uzio-header{position:fixed;top:0;left:240px;right:0;height:64px;background:var(--uzio-color-bg-card);
+  border-bottom:1px solid var(--uzio-color-border);display:flex;align-items:center;padding:0 28px;z-index:10}
+.uzio-header__title{font-size:15px;font-weight:700;color:var(--uzio-color-text-heading)}
+.uzio-header__spacer{flex:1}
+.uzio-header__meta{font-size:12px;color:var(--uzio-color-text-muted);margin-right:20px;display:flex;align-items:center;gap:6px}
+.uzio-header__meta .dot{width:7px;height:7px;border-radius:50%;background:var(--uzio-color-success)}
+.uzio-header__icons{display:flex;align-items:center;gap:16px;color:var(--uzio-color-text-muted)}
+.uzio-header__icons .uzio-icon{cursor:pointer;transition:color var(--uzio-motion-base)}
+.uzio-header__icons .uzio-icon:hover{color:var(--uzio-color-action)}
+.is-spinning{animation:spin 700ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.is-spinning{animation:none}*{transition:none!important}}
+.uzio-avatar{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
+  border-radius:50%;background:var(--uzio-color-action);color:#fff;font-weight:600;font-size:13px}
+
+.uzio-app-stage{padding:104px 32px 40px 272px;max-width:1720px}
+.uzio-page-title{font-size:30px;font-weight:400;line-height:38px;color:var(--uzio-color-text-heading);margin:0 0 4px}
+.uzio-subtitle{font-size:14px;color:var(--uzio-color-text-muted);margin:0 0 22px;max-width:80ch}
+.app-view{display:none}
+.app-view.is-active{display:block}
+
+@media (max-width:1180px){
+  .uzio-sidebar-x{width:64px;padding:16px 0}
+  .uzio-sidebar-x__brand{padding:0 0 18px;text-align:center;font-size:13px}
+  .uzio-sidebar-x__brand span{display:none}
+  .uzio-sidebar-x__item{justify-content:center;padding:12px 0;gap:0;border-left-width:2px}
+  .nav-label,.uzio-sidebar-x__foot{display:none}
+  .uzio-header{left:64px;padding:0 18px}
+  .uzio-app-stage{padding:96px 20px 40px 88px}
+  .uzio-page-title{font-size:24px;line-height:30px}
+}
+@media (max-width:700px){
+  .uzio-header__meta{display:none}
+  .uzio-app-stage{padding:92px 14px 32px 78px}
+}
+
+/* ---------- breadcrumb (sub-pages only) ---------- */
+.uzio-breadcrumb{display:inline-flex;align-items:center;gap:7px;cursor:pointer;background:none;border:none;
+  font-family:inherit;padding:0;margin:0 0 10px}
+.uzio-breadcrumb__arrow{color:var(--uzio-color-text-muted);font-size:15px;line-height:1}
+.uzio-breadcrumb__label{color:var(--uzio-color-action);font-size:13px;font-weight:600}
+.uzio-breadcrumb:hover .uzio-breadcrumb__label{text-decoration:underline}
+.uzio-breadcrumb:focus-visible{outline:2px solid var(--uzio-color-action);outline-offset:3px}
+
+/* ---------- pagination ---------- */
+.pager{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--uzio-color-text-muted)}
+.pager__btn{height:28px;min-width:30px;padding:0 10px;border:1px solid var(--uzio-color-border);
+  background:var(--uzio-color-bg-card);border-radius:var(--uzio-radius-sm);cursor:pointer;
+  font-family:inherit;font-size:12.5px;color:var(--uzio-color-text-body)}
+.pager__btn:disabled{opacity:.4;cursor:default}
+.pager__btn:not(:disabled):hover{border-color:var(--uzio-color-action);color:var(--uzio-color-action)}
+.pager__info{font-variant-numeric:tabular-nums}
+.pager__size{margin-left:auto;display:flex;align-items:center;gap:6px}
+
+/* ---------- sortable headers ---------- */
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--uzio-color-action)}
+th.sortable::after{content:'⇅';margin-left:5px;opacity:.35;font-size:10px}
+th.sortable.sort-asc::after{content:'↑';opacity:1;color:var(--uzio-color-action)}
+th.sortable.sort-desc::after{content:'↓';opacity:1;color:var(--uzio-color-action)}
+
+/* ---------- date-range filter ---------- */
+.date-filter{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--uzio-color-text-muted)}
+.date-filter select,.date-filter input{height:32px;border:1px solid var(--uzio-color-border);
+  border-radius:var(--uzio-radius-sm);background:var(--uzio-color-bg-card);font-family:inherit;
+  font-size:12.5px;color:var(--uzio-color-text-heading);padding:0 8px}
+.date-filter select:focus,.date-filter input:focus{outline:2px solid var(--uzio-color-action);outline-offset:-1px}
+
+/* ---------- clickable rows ---------- */
+tr.row-link{cursor:pointer}
+tr.row-link:hover .name-cell b{color:var(--uzio-color-action);text-decoration:underline}
+tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-offset:-2px}
+
+/* ---------- client detail ---------- */
+.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:20px}
+.detail-card{background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
+  border-radius:var(--uzio-radius-lg);padding:18px 20px}
+.detail-card h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--uzio-color-text-muted);margin:0 0 12px}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:7px 0;
+  border-top:1px solid var(--uzio-color-divider);font-size:13px}
+.kv:first-of-type{border-top:none}
+.kv dt{color:var(--uzio-color-text-muted);flex-shrink:0}
+.kv dd{margin:0;font-weight:600;color:var(--uzio-color-text-heading);text-align:right;word-break:break-word}
+.loc-row{border-top:1px solid var(--uzio-color-divider);padding:11px 0}
+.loc-row:first-of-type{border-top:none;padding-top:0}
+.loc-row__name{font-weight:700;font-size:13px;color:var(--uzio-color-text-heading);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.loc-row__addr{font-size:12.5px;color:var(--uzio-color-text-muted);margin-top:3px;line-height:1.5}
+
+/* ---------- filters ---------- */
+.filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.uzio-search{position:relative;display:flex;align-items:center;width:260px}
+.uzio-search__icon{position:absolute;left:10px;font-size:14px;color:var(--uzio-color-text-faint);pointer-events:none}
+.uzio-search__input{width:100%;height:32px;padding:0 10px 0 30px;border:1px solid var(--uzio-color-border);
+  border-radius:var(--uzio-radius-sm);font-family:inherit;font-size:13px;color:var(--uzio-color-text-heading);
+  background:var(--uzio-color-bg-card)}
+.uzio-search__input:focus{outline:2px solid var(--uzio-color-action);outline-offset:-1px;border-color:transparent}
+.chip-group{display:flex;gap:6px;flex-wrap:wrap}
+.uzio-filter-chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;cursor:pointer;
+  border-radius:var(--uzio-radius-pill);border:1px solid var(--uzio-color-border);background:var(--uzio-color-bg-card);
+  font-size:12px;font-weight:500;color:var(--uzio-color-text-body);font-family:inherit;
+  transition:background var(--uzio-motion-base),color var(--uzio-motion-base)}
+.uzio-filter-chip:hover{border-color:var(--uzio-color-action)}
+.uzio-filter-chip:focus-visible{outline:2px solid var(--uzio-color-action);outline-offset:2px}
+.uzio-filter-chip.is-active{background:var(--uzio-color-action);color:#fff;border-color:var(--uzio-color-action);font-weight:700}
+.uzio-filter-chip.is-active .uzio-filter-chip__dot{background:#fff!important}
+.uzio-filter-chip__dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--uzio-color-text-body);cursor:pointer;user-select:none}
+.result-count{margin-left:auto;font-size:12px;color:var(--uzio-color-text-muted);font-variant-numeric:tabular-nums}
+
+/* ---------- tables ---------- */
+.table-shell{background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
+  border-radius:var(--uzio-radius-lg);overflow:auto;max-height:calc(100vh - 300px)}
+.table-shell--short{max-height:calc(100vh - 260px)}
+.uzio-table{width:100%;border-collapse:separate;border-spacing:0}
+.uzio-table th{text-align:left;padding:10px 14px;font-size:12px;font-weight:700;letter-spacing:.3px;
+  color:var(--uzio-color-text-muted);background:var(--uzio-color-bg-table-head);
+  border-bottom:1px solid var(--uzio-color-border-light);position:sticky;top:0;z-index:2;white-space:nowrap}
+.uzio-table td{padding:9px 14px;font-size:13.5px;line-height:1.35;color:var(--uzio-color-text-heading);
+  border-bottom:1px solid var(--uzio-color-divider);vertical-align:middle}
+.uzio-table tbody tr:last-child td{border-bottom:none}
+.uzio-table tbody tr:hover td{background:var(--uzio-color-bg-row-hover)}
+.name-cell b{display:block;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{font-size:10.5px;color:var(--uzio-color-text-faint);margin-top:2px;font-weight:400;letter-spacing:.3px}
+.fein{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--uzio-color-text-muted)}
+
+/* Overview grid: fixed layout so the DSP column can't hog width and push the last
+   two columns out of the shell. Percentages sum to 100; narrow columns hold their
+   content on one line so rows stay a uniform height. */
+#ovTable{table-layout:fixed}
+#ovTable th,#ovTable td{overflow:hidden;text-overflow:ellipsis}
+#ovTable th:nth-child(1),#ovTable td:nth-child(1){width:25%}
+#ovTable th:nth-child(2),#ovTable td:nth-child(2){width:8%;white-space:nowrap}
+#ovTable th:nth-child(3),#ovTable td:nth-child(3){width:9%;white-space:nowrap}
+#ovTable th:nth-child(4),#ovTable td:nth-child(4){width:16%;font-size:12.5px;line-height:1.35}
+#ovTable th:nth-child(5),#ovTable td:nth-child(5){width:9%;white-space:nowrap}
+#ovTable th:nth-child(6),#ovTable td:nth-child(6){width:10%;white-space:nowrap}
+#ovTable th:nth-child(7),#ovTable td:nth-child(7){width:14%;white-space:nowrap}
+#ovTable th:nth-child(8),#ovTable td:nth-child(8){width:9%;white-space:nowrap}
+@media (max-width:1180px){
+  /* below the breakpoint there isn't room for 8 columns — drop the two the eye
+     scans least, rather than letting everything squeeze into unreadable slivers */
+  #ovTable th:nth-child(7),#ovTable td:nth-child(7),
+  #ovTable th:nth-child(8),#ovTable td:nth-child(8){display:none}
+  #ovTable th:nth-child(1),#ovTable td:nth-child(1){width:34%}
+  #ovTable th:nth-child(4),#ovTable td:nth-child(4){width:22%}
+}
+
+.matrix-table{min-width:max-content}
+.matrix-table th,.matrix-table td{white-space:nowrap;padding:8px 10px}
+.matrix-table .sticky-col{position:sticky;left:0;background:var(--uzio-color-bg-table-head);z-index:1;
+  text-align:left;font-weight:700;font-size:12.5px;border-right:1px solid var(--uzio-color-border-light)}
+.matrix-table thead .sticky-col{z-index:4}
+.matrix-table thead th{z-index:3}
+.mcell{text-align:center}
+.matrix-table th.is-hidden,.matrix-table td.is-hidden{display:none}
+
+/* ---------- status ---------- */
+.uzio-status{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:var(--uzio-radius-pill);
+  font-size:11.5px;font-weight:700;line-height:18px;white-space:nowrap}
+.uzio-status--success{color:var(--uzio-color-success);background:var(--uzio-color-success-bg)}
+.uzio-status--error{color:var(--uzio-color-error);background:var(--uzio-color-error-bg)}
+.uzio-status--warning{color:var(--uzio-color-warning);background:var(--uzio-color-warning-bg)}
+.uzio-status--neutral{color:var(--uzio-color-text-muted);background:var(--uzio-color-bg-subtle)}
+
+/* ---------- audit cards ---------- */
+.audit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.audit-card{background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
+  border-radius:var(--uzio-radius-md);padding:14px 16px}
+.audit-card__head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px}
+.audit-card__head b{font-size:13.5px;color:var(--uzio-color-text-heading)}
+.uzio-progress{width:100%;height:6px;background:var(--uzio-color-bg-subtle);border-radius:var(--uzio-radius-pill);overflow:hidden}
+.uzio-progress__fill{height:100%;background:var(--uzio-color-success);transition:width var(--uzio-motion-base)}
+.uzio-progress__fill--warn{background:var(--uzio-color-warning)}
+.uzio-progress__fill--error{background:var(--uzio-color-error)}
+.audit-card__note{font-size:11.5px;color:var(--uzio-color-text-muted);margin-top:8px;line-height:1.5}
+.audit-card__cats{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.cat-pip{font-size:10.5px;padding:1px 7px;border-radius:var(--uzio-radius-sm);font-weight:600}
+.cat-pip--yes{color:var(--uzio-color-success);background:var(--uzio-color-success-bg)}
+.cat-pip--no{color:var(--uzio-color-error);background:var(--uzio-color-error-bg)}
+
+/* ---------- open items ---------- */
+.section-block{margin-bottom:28px}
+.section-block h2{font-size:15px;font-weight:700;color:var(--uzio-color-text-heading);margin:0 0 11px;
+  display:flex;align-items:center;gap:8px}
+.uzio-section-label{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--uzio-color-text-muted);margin-bottom:9px;display:flex;align-items:center;gap:8px}
+.err-list{display:flex;flex-direction:column;gap:7px}
+.uzio-item{display:flex;background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
+  border-radius:var(--uzio-radius-sm);overflow:hidden}
+.uzio-item__bar{width:3px;align-self:stretch;flex-shrink:0}
+.uzio-item--critical .uzio-item__bar{background:var(--uzio-color-dot-critical)}
+.uzio-item--warning .uzio-item__bar{background:var(--uzio-color-dot-warning)}
+.uzio-item--alert .uzio-item__bar{background:var(--uzio-color-dot-alert)}
+.uzio-item__body{flex:1;padding:11px 15px}
+.uzio-item__title{font-size:13.5px;font-weight:700;color:var(--uzio-color-text-heading);margin-bottom:3px}
+.uzio-item__desc{font-size:12.5px;color:var(--uzio-color-text-body);line-height:1.55}
+
+.uzio-callout{background:var(--uzio-color-info-bg);border:1px dashed var(--uzio-color-info-border);
+  color:var(--uzio-color-info-text);border-radius:var(--uzio-radius-sm);padding:14px;margin-bottom:20px}
+.uzio-callout__title{display:flex;align-items:center;gap:6px;font-weight:700;font-size:14px;margin:0 0 5px;color:inherit}
+.uzio-callout p{margin:0;font-size:12.5px;line-height:1.55}
+
+.skeleton{padding:44px;text-align:center;color:var(--uzio-color-text-faint);font-size:13px;
+  background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);border-radius:var(--uzio-radius-lg)}
+.err-box{padding:15px;border:1px solid var(--uzio-color-error);background:var(--uzio-color-error-bg);
+  color:var(--uzio-color-error);border-radius:var(--uzio-radius-sm);font-size:13px}
+</style>
+</head>
+<body>
+
+<aside class="uzio-sidebar-x">
+  <div class="uzio-sidebar-x__brand">UZIO<span>DSP Ops</span></div>
+  <button class="uzio-sidebar-x__item uzio-sidebar-x__item--active" data-view="overview" data-title="Overview">
+    <span class="uzio-icon uzio-icon--dashboard"></span> <span class="nav-label">Overview</span>
+  </button>
+  <button class="uzio-sidebar-x__item" data-view="historical" data-title="Historical Data">
+    <span class="uzio-icon uzio-icon--file"></span> <span class="nav-label">Historical Data</span>
+  </button>
+  <button class="uzio-sidebar-x__item" data-view="audit" data-title="Audit Coverage">
+    <span class="uzio-icon uzio-icon--hr-compliance"></span> <span class="nav-label">Audit Coverage</span>
+  </button>
+  <button class="uzio-sidebar-x__item" data-view="documents" data-title="Documents">
+    <span class="uzio-icon uzio-icon--transfer"></span> <span class="nav-label">Documents</span>
+  </button>
+  <button class="uzio-sidebar-x__item" data-view="api" data-title="API Activity">
+    <span class="uzio-icon uzio-icon--task"></span> <span class="nav-label">API Activity</span>
+  </button>
+  <button class="uzio-sidebar-x__item" data-view="open" data-title="Open Items">
+    <span class="uzio-icon uzio-icon--alert-bulb"></span> <span class="nav-label">Open Items</span>
+  </button>
+  <div class="uzio-sidebar-x__foot" id="sidebar-foot">Loading&hellip;</div>
+</aside>
+
+<header class="uzio-header">
+  <div class="uzio-header__title" id="header-title">Overview</div>
+  <div class="uzio-header__spacer"></div>
+  <div class="uzio-header__meta" id="header-meta"><span class="dot"></span> <span id="meta-text">Live from Supabase</span></div>
+  <div class="uzio-header__icons">
+    <span class="uzio-icon uzio-icon--refresh" id="refresh-btn" role="button" tabindex="0" title="Refresh data"></span>
+    <span class="uzio-icon uzio-icon--help" title="Every view reads live from Supabase on load"></span>
+    <span class="uzio-avatar">SS</span>
+  </div>
+</header>
+
+<main class="uzio-app-stage">
+  <section class="app-view is-active" id="view-overview">
+    <h1 class="uzio-page-title">Client Overview</h1>
+    <p class="uzio-subtitle">Every DSP in Shruti's Implementation Onboarding Tracker, cross-matched against prod for FEIN and work locations.</p>
+    <div id="overview-content" class="skeleton">Loading&hellip;</div>
+  </section>
+
+  <!-- Sub-page: reached by clicking a DSP on Overview, so it leads with a
+       breadcrumb rather than sitting in the sidebar nav. -->
+  <section class="app-view" id="view-client">
+    <button class="uzio-breadcrumb" id="client-back">
+      <span class="uzio-breadcrumb__arrow">&#8592;</span>
+      <span class="uzio-breadcrumb__label">Client Overview</span>
+    </button>
+    <div id="client-content"></div>
+  </section>
+
+  <section class="app-view" id="view-historical">
+    <h1 class="uzio-page-title">Historical Data</h1>
+    <p class="uzio-subtitle">Required-report collection for the 14 clients on Rohit Kaushik's audit roster, checked against the Historical Data reference doc.</p>
+    <div id="historical-content" class="skeleton">Loading&hellip;</div>
+  </section>
+
+  <section class="app-view" id="view-audit">
+    <h1 class="uzio-page-title">Audit Coverage</h1>
+    <p class="uzio-subtitle">The same 14 clients, from Rohit's daily audit mail cross-checked against each Audit Files folder.</p>
+    <div id="audit-content" class="skeleton">Loading&hellip;</div>
+  </section>
+
+  <section class="app-view" id="view-documents">
+    <h1 class="uzio-page-title">Document Transfer</h1>
+    <p class="uzio-subtitle">Employee-document migration from ADP / Paycom into Uzio, tracked from the implementation team's transfer mails.</p>
+    <div id="documents-content" class="skeleton">Loading&hellip;</div>
+  </section>
+
+  <section class="app-view" id="view-api">
+    <h1 class="uzio-page-title">API Activity</h1>
+    <p class="uzio-subtitle">Which onboarding module has run for which client, when, and who ran it &mdash; from the PHIX-72859 run logs.</p>
+    <div id="api-content" class="skeleton">Loading&hellip;</div>
+  </section>
+
+  <section class="app-view" id="view-open">
+    <h1 class="uzio-page-title">Open Items</h1>
+    <p class="uzio-subtitle">Everything worth following up on, surfaced while assembling the other four views.</p>
+    <div id="open-content" class="skeleton">Loading&hellip;</div>
+  </section>
+</main>
+
+<script>
+const SUPABASE_URL = 'https://nqiyiherkzlhorsnyeni.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xaXlpaGVya3psaG9yc255ZW5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1MzE1OTcsImV4cCI6MjEwMjEwNzU5N30.jftJZ7FxGa-GveEAb1G-bZpxzob670Dbk1BePaqVlyQ';
+
+const NIL = '<span class="nil">&mdash;</span>';
+
+function esc(s){
+  return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDate(d){
+  if(!d) return NIL;
+  const p = d.split('-');
+  return '<span class="tnum">' + p[1] + '/' + p[2] + '/' + p[0].slice(2) + '</span>';
+}
+const DOT = {
+  good: 'var(--uzio-color-success)',
+  warn: 'var(--uzio-color-warning)',
+  bad: 'var(--uzio-color-error)',
+  info: 'var(--uzio-color-action)',
+  orange: 'var(--uzio-color-orange)'
+};
+
+/* Build a filter bar. cfg = {
+     search:  {id, placeholder},
+     groups:  [{id, options:[{val, label, dot}]}],
+     toggles: [{id, label}],
+     countId
+   }
+   Every group's first option is the "show everything" default. */
+function buildFilters(cfg){
+  let h = '<div class="filter-bar">';
+  if(cfg.search){
+    h += '<div class="uzio-search"><span class="uzio-search__icon">&#8981;</span>' +
+      '<input class="uzio-search__input" id="' + cfg.search.id + '" placeholder="' + esc(cfg.search.placeholder) +
+      '" aria-label="' + esc(cfg.search.placeholder) + '"></div>';
+  }
+  (cfg.groups || []).forEach(g => {
+    h += '<div class="chip-group" id="' + g.id + '">' + g.options.map(o =>
+      '<button class="uzio-filter-chip" data-val="' + esc(o.val) + '">' +
+      (o.dot ? '<span class="uzio-filter-chip__dot" style="background:' + o.dot + '"></span>' : '') +
+      esc(o.label) + '</button>').join('') + '</div>';
+  });
+  (cfg.toggles || []).forEach(t => {
+    h += '<label class="toggle"><input type="checkbox" id="' + t.id + '"> ' + esc(t.label) + '</label>';
+  });
+  return h + '<span class="result-count" id="' + cfg.countId + '"></span></div>';
+}
+
+/* Wire a filter bar to a list of {el, ...} records.
+   `match(record, state)` returns whether the record survives; `state` holds the
+   search text under `q` plus one entry per group id and toggle id. */
+function wireFilters(scope, cfg, records, match, label){
+  const state = { q: '' };
+  (cfg.groups || []).forEach(g => { state[g.id] = g.options[0].val; });
+  (cfg.toggles || []).forEach(t => { state[t.id] = false; });
+  const countEl = scope.querySelector('#' + cfg.countId);
+
+  function apply(){
+    let shown = 0;
+    records.forEach(rec => {
+      const ok = match(rec, state);
+      rec.el.style.display = ok ? '' : 'none';
+      if(ok) shown++;
+    });
+    countEl.textContent = label(shown, records.length);
+  }
+
+  if(cfg.search){
+    scope.querySelector('#' + cfg.search.id).addEventListener('input', e => {
+      state.q = (e.target.value || '').toLowerCase().trim();
+      apply();
+    });
+  }
+  (cfg.groups || []).forEach(g => {
+    wireChips(scope.querySelector('#' + g.id), v => { state[g.id] = v; apply(); });
+  });
+  (cfg.toggles || []).forEach(t => {
+    scope.querySelector('#' + t.id).addEventListener('change', e => {
+      state[t.id] = e.target.checked;
+      apply();
+    });
+  });
+  apply();
+}
+// City names arrive from prod in mixed conventions — some ALL CAPS ("ROCKVILLE"),
+// some already title-cased ("Meridian"). Normalise for display only.
+function titleCase(s){
+  return (s || '').toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+}
+// The placeholder div carries .skeleton (centred text + 44px padding). It MUST be
+// dropped once real content is injected, otherwise every table inherits centred
+// text and the loading padding.
+function panel(id){
+  const el = document.getElementById(id);
+  el.classList.remove('skeleton');
+  return el;
+}
+async function sbGet(path){
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }
+  });
+  if(!res.ok) throw new Error(path.split('?')[0] + ' → HTTP ' + res.status);
+  return res.json();
+}
+function wireChips(groupEl, onPick){
+  const btns = Array.from(groupEl.querySelectorAll('.uzio-filter-chip'));
+  btns.forEach(btn => btn.addEventListener('click', () => {
+    btns.forEach(b => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    onPick(btn.dataset.val);
+  }));
+  btns[0].classList.add('is-active');
+}
+
+/* ==================== OVERVIEW ==================== */
+function statusBucket(s){
+  const t = (s || '').toLowerCase();
+  if(t.startsWith('live')) return 'Live';
+  if(t.indexOf('progress') !== -1) return 'In progress';
+  if(t.indexOf('exit') !== -1) return 'Exited';
+  if(t.indexOf('handed over') !== -1) return 'Handed over';
+  return 'Other';
+}
+// Every DSP row, keyed by short code, so the detail sub-page can look one up
+// without re-fetching. DATA holds the other five datasets for the same reason.
+let CLIENTS_BY_CODE = {};
+const DATA = {};
+const PAGE_SIZES = [25, 50, 100];
+
+/* The five sources spell the same company differently — "InnovDel" vs
+   "InnovDel Inc", "North Star Parcel" vs "North Star Parcel LLC",
+   "CDC LOGISTICS, LLC" vs "CDC Logistics". Only api_activity_runs carries a
+   FEIN, so everything else has to be matched on a normalised name. */
+function normName(s){
+  return (s || '').toUpperCase()
+    .replace(/[.,]/g, ' ')
+    .replace(/\b(LLC|L L C|INC|CORP|CORPORATION|CO|LTD|LP|DSP)\b/g, ' ')
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+function sameClient(a, b){
+  const na = normName(a), nb = normName(b);
+  if(!na || !nb) return false;
+  if(na === nb) return true;
+  // One name may carry extra words ("Delivery", "Logistics"); treat it as the
+  // same company when every token of the shorter name appears in the longer.
+  const ta = na.split(' '), tb = nb.split(' ');
+  const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  if(short.length < 2) return false;
+  return short.every(t => long.indexOf(t) !== -1);
+}
+/* Open items name the client in free text ("Spelman — Employee Contributions…"),
+   so there is no field to join on. Match on the leading token of the company
+   name, which is the distinctive part; require 4+ chars so a generic word can't
+   sweep in unrelated items. This is a heuristic and the UI says so. */
+function mentionsClient(text, name){
+  const nn = normName(name);
+  if(!nn) return false;
+  const nt = ' ' + normName(text) + ' ';
+  if(nt.indexOf(' ' + nn + ' ') !== -1) return true;
+  const first = nn.split(' ')[0];
+  if(first.length < 4) return false;
+  return nt.indexOf(' ' + first + ' ') !== -1;
+}
+
+/* Build a date string from the LOCAL calendar parts. Do not reach for
+   toISOString() here: it converts to UTC first, so local midnight on the 1st
+   becomes the previous month's last day in any timezone ahead of UTC — which
+   would silently shift every window by a day for anyone in IST. */
+function isoLocal(dt){
+  return dt.getFullYear() + '-' +
+    String(dt.getMonth() + 1).padStart(2, '0') + '-' +
+    String(dt.getDate()).padStart(2, '0');
+}
+
+/* Relative windows, because go-lives are tracked as "coming up next month" or
+   "happened in the last month" rather than as fixed calendar dates.
+   Day 0 of a month in JS gives the last day of the previous one. */
+function dateWindow(kind){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+  switch(kind){
+    case 'last30':    return [isoLocal(new Date(y, m, d - 30)), isoLocal(new Date(y, m, d))];
+    case 'thisMonth': return [isoLocal(new Date(y, m, 1)),      isoLocal(new Date(y, m + 1, 0))];
+    case 'next30':    return [isoLocal(new Date(y, m, d)),      isoLocal(new Date(y, m, d + 30))];
+    case 'nextMonth': return [isoLocal(new Date(y, m + 1, 1)),  isoLocal(new Date(y, m + 2, 0))];
+    default:          return ['', ''];
+  }
+}
+
+function renderOverview(rows){
+  const el = panel('overview-content');
+  const withFein = rows.filter(r => r.fein).length;
+  CLIENTS_BY_CODE = {};
+  rows.forEach(r => { CLIENTS_BY_CODE[r.dsp_short_code] = r; });
+
+  // Location and FEIN live on the detail page now — the grid keeps only what
+  // you scan across rows, and each row links through for the rest.
+  const body = rows.map(r => {
+    const locs = r.client_work_locations || [];
+    return '<tr class="row-link" tabindex="0" data-code-raw="' + esc(r.dsp_short_code) + '"' +
+      ' data-name="' + esc((r.dsp_name || '').toLowerCase()) + '"' +
+      ' data-code="' + esc((r.dsp_short_code || '').toLowerCase()) + '"' +
+      ' data-vendor="' + esc(r.vendor || 'none') + '"' +
+      ' data-bucket="' + esc(statusBucket(r.final_status)) + '"' +
+      ' data-fein="' + (r.fein ? '1' : '0') + '"' +
+      ' data-tt="' + esc(r.actual_tt_live_date || '') + '"' +
+      ' data-pay="' + esc(r.payroll_live_date || '') + '">' +
+      '<td class="name-cell"><b title="' + esc(r.dsp_name) + '">' + esc(r.dsp_name) + '</b>' +
+        '<div class="sub">' + esc(r.dsp_short_code) +
+        (locs.length ? ' &middot; ' + locs.length + ' location' + (locs.length > 1 ? 's' : '') : '') + '</div></td>' +
+      '<td>' + (r.vendor ? esc(r.vendor) : NIL) + '</td>' +
+      '<td>' + (r.final_status ? esc(r.final_status) : NIL) + '</td>' +
+      '<td>' + fmtDate(r.actual_tt_live_date) + '</td>' +
+      '<td>' + fmtDate(r.payroll_live_date) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="filter-bar">' +
+      '<div class="uzio-search"><span class="uzio-search__icon">&#8981;</span>' +
+        '<input class="uzio-search__input" id="ovSearch" placeholder="Search DSP name or code…" aria-label="Search DSPs"></div>' +
+      '<div class="chip-group" id="ovStatus">' +
+        '<button class="uzio-filter-chip" data-val="all">Any status</button>' +
+        '<button class="uzio-filter-chip" data-val="Live"><span class="uzio-filter-chip__dot" style="background:' + DOT.good + '"></span>Live</button>' +
+        '<button class="uzio-filter-chip" data-val="In progress"><span class="uzio-filter-chip__dot" style="background:' + DOT.warn + '"></span>In progress</button>' +
+        '<button class="uzio-filter-chip" data-val="Handed over">Handed over</button>' +
+        '<button class="uzio-filter-chip" data-val="Exited"><span class="uzio-filter-chip__dot" style="background:' + DOT.bad + '"></span>Exited</button>' +
+      '</div>' +
+      '<div class="chip-group" id="ovVendor">' +
+        '<button class="uzio-filter-chip" data-val="all">Any vendor</button>' +
+        '<button class="uzio-filter-chip" data-val="ADP"><span class="uzio-filter-chip__dot" style="background:' + DOT.info + '"></span>ADP</button>' +
+        '<button class="uzio-filter-chip" data-val="Paycom"><span class="uzio-filter-chip__dot" style="background:' + DOT.orange + '"></span>Paycom</button>' +
+      '</div>' +
+      '<label class="toggle"><input type="checkbox" id="ovNoFein"> Not matched to prod</label>' +
+    '</div>' +
+    '<div class="filter-bar">' +
+      '<div class="date-filter">' +
+        '<select id="ovDateField" aria-label="Which date to filter on">' +
+          '<option value="either">TT or Payroll live</option>' +
+          '<option value="tt">TT live only</option>' +
+          '<option value="pay">Payroll live only</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="chip-group" id="ovWhen">' +
+        '<button class="uzio-filter-chip" data-val="any">Any time</button>' +
+        '<button class="uzio-filter-chip" data-val="last30">Last 30 days</button>' +
+        '<button class="uzio-filter-chip" data-val="thisMonth">This month</button>' +
+        '<button class="uzio-filter-chip" data-val="next30">Next 30 days</button>' +
+        '<button class="uzio-filter-chip" data-val="nextMonth">Next month</button>' +
+      '</div>' +
+      '<div class="date-filter">' +
+        '<input type="date" id="ovDateFrom" aria-label="From date">' +
+        '<span>to</span><input type="date" id="ovDateTo" aria-label="To date">' +
+      '</div>' +
+      '<span class="result-count" id="ovCount"></span>' +
+    '</div>' +
+    '<div class="table-shell"><table class="uzio-table" id="ovTable">' +
+      '<thead><tr><th>DSP</th><th>Vendor</th><th>Final status</th>' +
+      '<th class="sortable" data-sort="tt">TT live</th>' +
+      '<th class="sortable" data-sort="pay">Payroll live</th></tr></thead>' +
+      '<tbody>' + body + '</tbody></table></div>' +
+    '<div class="pager">' +
+      '<button class="pager__btn" id="ovFirst" type="button">&laquo;</button>' +
+      '<button class="pager__btn" id="ovPrev" type="button">Prev</button>' +
+      '<span class="pager__info" id="ovPageInfo"></span>' +
+      '<button class="pager__btn" id="ovNext" type="button">Next</button>' +
+      '<button class="pager__btn" id="ovLast" type="button">&raquo;</button>' +
+      '<span class="pager__size">Rows <select id="ovPageSize" aria-label="Rows per page">' +
+        PAGE_SIZES.map(n => '<option value="' + n + '">' + n + '</option>').join('') +
+      '</select></span>' +
+    '</div>';
+
+  const tbody = el.querySelector('#ovTable tbody');
+  const records = Array.from(tbody.querySelectorAll('tr')).map(tr => ({
+    el: tr,
+    code: tr.dataset.code,
+    codeRaw: tr.dataset.codeRaw,
+    name: tr.dataset.name,
+    bucket: tr.dataset.bucket,
+    vendor: tr.dataset.vendor,
+    hasFein: tr.dataset.fein === '1',
+    tt: tr.dataset.tt,
+    pay: tr.dataset.pay
+  }));
+
+  const state = {
+    q: '', status: 'all', vendor: 'all', noFein: false,
+    dateField: 'either', from: '', to: '',
+    sortKey: null, sortDir: 'asc',
+    page: 0, pageSize: PAGE_SIZES[0]
+  };
+  const $ = (sel) => el.querySelector(sel);
+
+  function matches(r){
+    if(state.q && r.name.indexOf(state.q) === -1 && r.code.indexOf(state.q) === -1) return false;
+    if(state.status !== 'all' && r.bucket !== state.status) return false;
+    if(state.vendor !== 'all' && r.vendor !== state.vendor) return false;
+    if(state.noFein && r.hasFein) return false;
+    if(state.from || state.to){
+      // 'either' means the DSP shows up if EITHER go-live date lands in the
+      // window — that's how the team asks the question ("kiski TT ya payroll
+      // date agle mahine hai"), not one field at a time.
+      const fields = state.dateField === 'either' ? ['tt', 'pay'] : [state.dateField];
+      const hit = fields.some(f => {
+        const d = r[f];
+        if(!d) return false;                       // no date can't land in a window
+        if(state.from && d < state.from) return false;
+        if(state.to && d > state.to) return false;
+        return true;
+      });
+      if(!hit) return false;
+    }
+    return true;
+  }
+
+  function apply(){
+    const visible = records.filter(matches);
+
+    if(state.sortKey){
+      const dir = state.sortDir === 'asc' ? 1 : -1;
+      visible.sort((a, b) => {
+        const av = a[state.sortKey], bv = b[state.sortKey];
+        // Blank dates always sink to the bottom, whichever way the column sorts.
+        if(!av && !bv) return 0;
+        if(!av) return 1;
+        if(!bv) return -1;
+        return av < bv ? -dir : av > bv ? dir : 0;
+      });
+      visible.forEach(r => tbody.appendChild(r.el));
+    }
+
+    const pages = Math.max(1, Math.ceil(visible.length / state.pageSize));
+    if(state.page > pages - 1) state.page = pages - 1;
+    const start = state.page * state.pageSize;
+    const slice = new Set(visible.slice(start, start + state.pageSize));
+
+    records.forEach(r => { r.el.style.display = slice.has(r) ? '' : 'none'; });
+
+    $('#ovCount').textContent = visible.length + ' of ' + records.length + ' DSPs';
+    $('#ovPageInfo').textContent = visible.length
+      ? (start + 1) + '–' + Math.min(start + state.pageSize, visible.length) + ' of ' + visible.length
+      : 'No matches';
+    $('#ovFirst').disabled = $('#ovPrev').disabled = state.page === 0;
+    $('#ovNext').disabled = $('#ovLast').disabled = state.page >= pages - 1;
+  }
+
+  $('#ovSearch').addEventListener('input', e => {
+    state.q = (e.target.value || '').toLowerCase().trim(); state.page = 0; apply();
+  });
+  $('#ovNoFein').addEventListener('change', e => { state.noFein = e.target.checked; state.page = 0; apply(); });
+  wireChips($('#ovStatus'), v => { state.status = v; state.page = 0; apply(); });
+  wireChips($('#ovVendor'), v => { state.vendor = v; state.page = 0; apply(); });
+
+  $('#ovDateField').addEventListener('change', e => { state.dateField = e.target.value; state.page = 0; apply(); });
+
+  // Picking a window fills the two date boxes, so the resolved dates stay
+  // visible instead of the filter being an opaque "next month".
+  wireChips($('#ovWhen'), kind => {
+    const [from, to] = dateWindow(kind);
+    state.from = from; state.to = to;
+    $('#ovDateFrom').value = from;
+    $('#ovDateTo').value = to;
+    state.page = 0;
+    apply();
+  });
+
+  // Land on the current month rather than all 99 DSPs: the page is used to see
+  // who is going live now, and the full list is one chip away.
+  setDefaultWindow('thisMonth');
+  function setDefaultWindow(kind){
+    const [from, to] = dateWindow(kind);
+    state.from = from; state.to = to;
+    $('#ovDateFrom').value = from;
+    $('#ovDateTo').value = to;
+    $('#ovWhen').querySelectorAll('.uzio-filter-chip').forEach(c =>
+      c.classList.toggle('is-active', c.dataset.val === kind));
+  }
+
+  // Typing your own dates is still allowed; it just stops claiming to be one
+  // of the presets.
+  const onManualDate = () => {
+    state.from = $('#ovDateFrom').value;
+    state.to = $('#ovDateTo').value;
+    $('#ovWhen').querySelectorAll('.uzio-filter-chip').forEach(c => c.classList.remove('is-active'));
+    state.page = 0;
+    apply();
+  };
+  $('#ovDateFrom').addEventListener('change', onManualDate);
+  $('#ovDateTo').addEventListener('change', onManualDate);
+
+  el.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    state.sortDir = (state.sortKey === key && state.sortDir === 'asc') ? 'desc' : 'asc';
+    state.sortKey = key;
+    el.querySelectorAll('th.sortable').forEach(o => o.classList.remove('sort-asc', 'sort-desc'));
+    th.classList.add(state.sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    state.page = 0;
+    apply();
+  }));
+
+  $('#ovFirst').addEventListener('click', () => { state.page = 0; apply(); });
+  $('#ovPrev').addEventListener('click', () => { state.page = Math.max(0, state.page - 1); apply(); });
+  $('#ovNext').addEventListener('click', () => { state.page++; apply(); });
+  $('#ovLast').addEventListener('click', () => { state.page = 1e9; apply(); });
+  $('#ovPageSize').addEventListener('change', e => {
+    state.pageSize = Number(e.target.value); state.page = 0; apply();
+  });
+
+  const open = (tr) => showClient(tr.dataset.codeRaw);
+  tbody.addEventListener('click', e => {
+    const tr = e.target.closest('tr.row-link');
+    if(tr) open(tr);
+  });
+  tbody.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    const tr = e.target.closest('tr.row-link');
+    if(tr){ e.preventDefault(); open(tr); }
+  });
+
+  apply();
+  return { total: rows.length, withFein };
+}
+
+/* ==================== CLIENT DETAIL (sub-page) ==================== */
+function kv(label, value){
+  return '<div class="kv"><dt>' + esc(label) + '</dt><dd>' + (value == null || value === '' ? NIL : value) + '</dd></div>';
+}
+function showClient(code){
+  const r = CLIENTS_BY_CODE[code];
+  if(!r) return;
+
+  const locs = (r.client_work_locations || []).slice().sort((a, b) =>
+    (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+
+  const locHtml = locs.length ? locs.map(l => {
+    const line2 = [titleCase(l.city), (l.state || '').toUpperCase(), l.zip_code].filter(Boolean).join(', ');
+    const street = [l.address_line1, l.address_line2].filter(Boolean).join(', ');
+    return '<div class="loc-row"><div class="loc-row__name">' +
+      esc(l.work_location_name || 'Unnamed location') +
+      (l.is_primary ? '<span class="uzio-chip">Primary</span>' : '') + '</div>' +
+      '<div class="loc-row__addr">' + (street ? esc(street) + '<br>' : '') + esc(line2) + '</div></div>';
+  }).join('') :
+    '<p style="font-size:12.5px;color:var(--uzio-color-text-muted);margin:0">' +
+    (r.fein ? 'No work locations recorded in prod for this FEIN.'
+            : 'Not matched to a prod employer yet, so no locations are available.') + '</p>';
+
+  panel('client-content').innerHTML =
+    '<h1 class="uzio-page-title">' + esc(r.dsp_name) + '</h1>' +
+    '<p class="uzio-subtitle">' + esc(r.dsp_short_code) +
+      (r.vendor ? ' &middot; ' + esc(r.vendor) : '') +
+      (r.final_status ? ' &middot; ' + esc(r.final_status) : '') + '</p>' +
+    '<div class="detail-grid">' +
+      '<div class="detail-card"><h3>Identity</h3>' +
+        kv('DSP short code', esc(r.dsp_short_code)) +
+        kv('FEIN', r.fein ? '<span class="tnum">' + esc(r.fein) + '</span>' : null) +
+        kv('Vendor', r.vendor ? esc(r.vendor) : null) +
+        kv('State', r.state ? esc(r.state) : null) +
+        kv('Pay frequency', r.frequency ? esc(r.frequency) : null) +
+        kv('Previous system', r.previous_system ? esc(r.previous_system) : null) +
+        kv('Implementor', r.implementor ? esc(r.implementor) : null) +
+      '</div>' +
+      '<div class="detail-card"><h3>Milestones</h3>' +
+        kv('Expected TT live', fmtDate(r.expected_tt_live_date)) +
+        kv('Actual TT live', fmtDate(r.actual_tt_live_date)) +
+        kv('Payroll cut-off', fmtDate(r.payroll_cutoff_date)) +
+        kv('Payroll live', fmtDate(r.payroll_live_date)) +
+        kv('Final status', r.final_status ? esc(r.final_status) : null) +
+      '</div>' +
+      '<div class="detail-card"><h3>Work locations' +
+        (locs.length ? ' (' + locs.length + ')' : '') + '</h3>' + locHtml + '</div>' +
+    '</div>' +
+    (r.source_row_notes
+      ? '<div class="uzio-callout"><h6 class="uzio-callout__title">' +
+        '<span class="uzio-icon uzio-icon--alert-bulb uzio-icon--sm"></span>Notes from the source sheet</h6>' +
+        '<p>' + esc(r.source_row_notes) + '</p></div>'
+      : '') +
+    clientApiSection(r) +
+    clientHistoricalSection(r) +
+    clientAuditSection(r) +
+    clientDocumentsSection(r) +
+    clientOpenItemsSection(r);
+
+  showView('client', r.dsp_name);
+}
+
+function emptyNote(msg){
+  return '<p style="font-size:12.5px;color:var(--uzio-color-text-muted);margin:0">' + esc(msg) + '</p>';
+}
+function section(title, inner, meta){
+  return '<div class="section-block"><h2>' + esc(title) +
+    (meta ? '<span style="font-weight:400;font-size:12px;color:var(--uzio-color-text-faint)">' + esc(meta) + '</span>' : '') +
+    '</h2>' + inner + '</div>';
+}
+
+// api_activity_runs is the one source with a FEIN, so this join is exact.
+function clientApiSection(client){
+  const rows = (DATA.api || []).filter(a => client.fein && a.fein === client.fein);
+  if(!rows.length){
+    return section('API Activity', emptyNote(client.fein
+      ? 'No onboarding API runs recorded for this FEIN.'
+      : 'Not matched to a prod employer, so API runs cannot be looked up.'));
+  }
+  const byModule = {};
+  rows.forEach(a => { byModule[a.module_key] = a; });
+  const ran = MODULES.filter(m => byModule[m[0]]).length;
+  const body = MODULES.map(m => {
+    const a = byModule[m[0]];
+    return '<tr><td>' + esc(m[1]) + '</td>' +
+      '<td>' + (a ? '<span class="uzio-status uzio-status--success">&#10003; Run</span>'
+                  : '<span class="uzio-status uzio-status--error">&#10007; Never run</span>') + '</td>' +
+      '<td>' + (a ? fmtDate(a.last_run_date) : NIL) + '</td>' +
+      '<td>' + (a && a.run_by ? esc(a.run_by.split('.')[0]) : NIL) + '</td></tr>';
+  }).join('');
+  return section('API Activity', '<div class="table-shell table-shell--short"><table class="uzio-table">' +
+    '<thead><tr><th>Module</th><th>Status</th><th>Last run</th><th>Run by</th></tr></thead>' +
+    '<tbody>' + body + '</tbody></table></div>', ran + ' of ' + MODULES.length + ' modules run');
+}
+
+function clientHistoricalSection(client){
+  const rows = (DATA.historical || []).filter(h => sameClient(h.client_name, client.dsp_name));
+  if(!rows.length){
+    return section('Historical Data', emptyNote('Not on the historical-data roster (14 clients are tracked).'));
+  }
+  const overall = rows.find(h => h.report_category === 'Overall');
+  const detail = rows.filter(h => h.report_category !== 'Overall');
+  let inner = '';
+  if(overall){
+    inner += '<p style="margin:0 0 10px"><span class="uzio-status uzio-status--' + histClass(overall.status) + '">' +
+      esc(overall.status) + '</span>' +
+      (overall.notes ? ' <span style="font-size:12.5px;color:var(--uzio-color-text-muted)">' + esc(overall.notes) + '</span>' : '') +
+      '</p>';
+  }
+  if(detail.length){
+    const order = HIST_ORDER.filter(c => detail.some(d => d.report_category === c));
+    inner += '<div class="table-shell table-shell--short"><table class="uzio-table">' +
+      '<thead><tr><th>Report</th><th>Status</th><th>Note</th></tr></thead><tbody>' +
+      order.map(cat => {
+        const d = detail.find(x => x.report_category === cat);
+        return '<tr><td>' + esc(cat) + '</td>' +
+          '<td><span class="uzio-status uzio-status--' + histClass(d.status) + '">' + esc(d.status) + '</span></td>' +
+          '<td style="color:var(--uzio-color-text-muted);font-size:12.5px">' + esc(d.notes || '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  } else if(overall){
+    inner += emptyNote('No report-by-report breakdown yet — only the overall status has been recorded.');
+  }
+  return section('Historical Data', inner);
+}
+
+function clientAuditSection(client){
+  const rows = (DATA.audit || []).filter(a => sameClient(a.client_name, client.dsp_name));
+  if(!rows.length){
+    return section('Audit Coverage', emptyNote('Not on the audit-coverage roster (14 clients are tracked).'));
+  }
+  const overallOnly = rows.length === 1 && rows[0].audit_category === 'Overall';
+  if(overallOnly){
+    const r = rows[0];
+    return section('Audit Coverage',
+      '<p style="margin:0"><span class="uzio-status uzio-status--neutral">' + esc(r.status) + '</span>' +
+      (r.notes ? ' <span style="font-size:12.5px;color:var(--uzio-color-text-muted)">' + esc(r.notes) + '</span>' : '') + '</p>');
+  }
+  const present = rows.filter(a => a.status === 'Present').length;
+  const pct = rows.length ? present / rows.length * 100 : 0;
+  const fill = pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
+  const pips = rows.map(a =>
+    '<span class="cat-pip cat-pip--' + (a.status === 'Present' ? 'yes' : 'no') + '">' + esc(a.audit_category) + '</span>').join('');
+  const notes = rows.filter(a => a.notes).map(a => a.audit_category + ' — ' + a.notes);
+  return section('Audit Coverage',
+    '<div class="uzio-progress" style="margin-bottom:10px"><div class="uzio-progress__fill' + fill +
+    '" style="width:' + pct + '%"></div></div>' +
+    '<div class="audit-card__cats">' + pips + '</div>' +
+    (notes.length ? '<div class="audit-card__note">' + esc(notes.join(' · ')) + '</div>' : ''),
+    present + ' of ' + rows.length + ' audits present');
+}
+
+function clientDocumentsSection(client){
+  const d = (DATA.documents || []).find(x => sameClient(x.client_name, client.dsp_name));
+  if(!d) return section('Document Transfer', emptyNote('No document transfer reported for this client.'));
+  const breakdown = [];
+  if(d.fail_filename_format) breakdown.push(d.fail_filename_format + ' filename format');
+  if(d.fail_employee_not_found) breakdown.push(d.fail_employee_not_found + ' employee not found');
+  if(d.fail_unsupported_type) breakdown.push(d.fail_unsupported_type + ' unsupported type');
+  return section('Document Transfer',
+    '<div class="detail-card">' +
+      kv('Status', '<span class="uzio-status uzio-status--' + (DOC_STATUS_CLASS[d.status] || 'neutral') + '">' + esc(d.status) + '</span>') +
+      kv('Transfer date', fmtDate(d.transfer_date)) +
+      kv('Total documents', d.total_docs != null ? num(d.total_docs) : null) +
+      kv('Failed', d.failed_docs != null ? num(d.failed_docs) : null) +
+      (breakdown.length ? kv('Failure breakdown', esc(breakdown.join(' · '))) : '') +
+      (d.notes ? '<div style="margin-top:10px;font-size:12.5px;color:var(--uzio-color-text-muted);line-height:1.55">' +
+        esc(d.notes) + '</div>' : '') +
+    '</div>');
+}
+
+function clientOpenItemsSection(client){
+  const items = (DATA.open || []).filter(o =>
+    mentionsClient((o.title || '') + ' ' + (o.description || ''), client.dsp_name));
+  if(!items.length) return section('Open Items', emptyNote('No open items mention this client.'));
+  const cls = { 'Needs action': 'critical', 'Worth checking': 'warning', 'Pending': 'alert' };
+  return section('Open Items',
+    '<div class="err-list">' + items.map(o =>
+      '<div class="uzio-item uzio-item--' + (cls[o.severity] || 'alert') + '"><span class="uzio-item__bar"></span>' +
+      '<div class="uzio-item__body"><div class="uzio-item__title">' + esc(o.title) + '</div>' +
+      '<div class="uzio-item__desc">' + esc(o.description || '') + '</div></div></div>').join('') + '</div>' +
+    '<p style="font-size:11.5px;color:var(--uzio-color-text-faint);margin:8px 0 0">' +
+    'Open items have no client field — these are matched by the company name appearing in the text.</p>',
+    items.length + ' matched');
+}
+
+/* ==================== HISTORICAL ==================== */
+const HIST_ORDER = ['Payroll History','Time Off','Timecards','Audit Trail','I-9'];
+function histClass(s){
+  const t = (s || '').toLowerCase();
+  if(t.indexOf('complete') === 0 || t === 'present' || /^\d+\s*\/\s*\d+$/.test(t.trim()) && t.split('/')[0].trim() === t.split('/')[1].trim()) return 'success';
+  if(t.indexOf('not started') !== -1 || t === 'missing' || t.indexOf('0/') === 0) return 'error';
+  if(t.indexOf('nearly') !== -1 || t.indexOf('partial') !== -1 || t.indexOf('minimal') !== -1 || t.indexOf('missing') !== -1) return 'warning';
+  return 'neutral';
+}
+// Collapse the seven source statuses into the three buckets people actually
+// filter by. 'Other' covers "Too new" and "Not deep-audited".
+function histBucket(s){
+  if(s === 'Complete') return 'Complete';
+  if(['Nearly complete','Partial','Minimal'].indexOf(s) !== -1) return 'Partial';
+  if(s === 'Not started') return 'Not started';
+  return 'Other';
+}
+const HIST_FILTERS = {
+  search: { id: 'histSearch', placeholder: 'Search client…' },
+  groups: [
+    { id: 'histStatus', options: [
+      { val: 'all', label: 'Any status' },
+      { val: 'Complete', label: 'Complete', dot: DOT.good },
+      { val: 'Partial', label: 'Partial', dot: DOT.warn },
+      { val: 'Not started', label: 'Not started', dot: DOT.bad },
+      { val: 'Other', label: 'Other' }
+    ]},
+    { id: 'histVendor', options: [
+      { val: 'all', label: 'Any vendor' },
+      { val: 'ADP', label: 'ADP', dot: DOT.info },
+      { val: 'Paycom', label: 'Paycom', dot: DOT.orange }
+    ]}
+  ],
+  countId: 'histCount'
+};
+function renderHistorical(rows){
+  const el = panel('historical-content');
+  const overall = rows.filter(r => r.report_category === 'Overall');
+  const detail = rows.filter(r => r.report_category !== 'Overall');
+
+  const summary = overall.map(r =>
+    '<tr data-name="' + esc((r.client_name || '').toLowerCase()) + '"' +
+    ' data-bucket="' + esc(histBucket(r.status)) + '"' +
+    ' data-vendor="' + esc(r.vendor || 'none') + '">' +
+    '<td class="name-cell"><b>' + esc(r.client_name) + '</b></td>' +
+    '<td>' + (r.vendor ? esc(r.vendor) : NIL) + '</td>' +
+    '<td><span class="uzio-status uzio-status--' + histClass(r.status) + '">' + esc(r.status) + '</span></td>' +
+    '<td style="color:var(--uzio-color-text-muted);font-size:12.5px">' + esc(r.notes || '') + '</td></tr>'
+  ).join('');
+
+  let detailHtml = '';
+  const clients = [];
+  detail.forEach(r => { if(clients.indexOf(r.client_name) === -1) clients.push(r.client_name); });
+  if(clients.length){
+    const map = {};
+    detail.forEach(r => { map[r.client_name + '||' + r.report_category] = r; });
+    const head = '<tr><th>Report</th>' + clients.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr>';
+    const body = HIST_ORDER.map(cat =>
+      '<tr><td style="font-weight:700;font-size:12.5px">' + esc(cat) + '</td>' + clients.map(c => {
+        const r = map[c + '||' + cat];
+        if(!r) return '<td>' + NIL + '</td>';
+        return '<td><span class="uzio-status uzio-status--' + histClass(r.status) + '">' + esc(r.status) + '</span>' +
+          (r.notes ? '<div class="sub">' + esc(r.notes) + '</div>' : '') + '</td>';
+      }).join('') + '</tr>'
+    ).join('');
+    detailHtml = '<div class="section-block"><h2>Per-report breakdown</h2>' +
+      '<div class="table-shell table-shell--short"><table class="uzio-table">' +
+      '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+      '<p style="font-size:11.5px;color:var(--uzio-color-text-faint);margin:8px 0 0">' +
+      'Only clients whose folders have been walked report-by-report appear here. ' +
+      'Current-year payroll history sits in each client’s “Payroll Setup” folder as quarterly cuts, not in Historical Data.</p></div>';
+  }
+
+  el.innerHTML =
+    '<div class="section-block"><h2>Collection status by client</h2>' +
+    buildFilters(HIST_FILTERS) +
+    '<div class="table-shell table-shell--short"><table class="uzio-table" id="histTable">' +
+    '<thead><tr><th>Client</th><th>Vendor</th><th>Status</th><th>Detail</th></tr></thead>' +
+    '<tbody>' + summary + '</tbody></table></div></div>' + detailHtml;
+
+  const records = Array.from(el.querySelectorAll('#histTable tbody tr')).map(tr => ({
+    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket, vendor: tr.dataset.vendor
+  }));
+  wireFilters(el, HIST_FILTERS, records, (r, s) =>
+    (!s.q || r.name.indexOf(s.q) !== -1) &&
+    (s.histStatus === 'all' || r.bucket === s.histStatus) &&
+    (s.histVendor === 'all' || r.vendor === s.histVendor),
+    (n, total) => n + ' of ' + total + ' clients'
+  );
+}
+
+/* ==================== AUDIT ==================== */
+const AUDIT_FILTERS = {
+  search: { id: 'audSearch', placeholder: 'Search client…' },
+  groups: [
+    { id: 'audCover', options: [
+      { val: 'all', label: 'Any coverage' },
+      { val: 'full', label: 'Fully covered', dot: DOT.good },
+      { val: 'gap', label: 'Has a gap', dot: DOT.warn },
+      { val: 'none', label: 'No folder', dot: DOT.bad }
+    ]}
+  ],
+  // Census is the audit that goes missing most often, so it earns its own toggle.
+  toggles: [{ id: 'audCensus', label: 'Missing Census only' }],
+  countId: 'audCount'
+};
+function renderAudit(rows){
+  const el = panel('audit-content');
+  const byClient = {}; const order = [];
+  rows.forEach(r => {
+    if(!byClient[r.client_name]){ byClient[r.client_name] = []; order.push(r.client_name); }
+    byClient[r.client_name].push(r);
+  });
+
+  const scored = order.map(client => {
+    const recs = byClient[client];
+    const overallOnly = recs.length === 1 && recs[0].audit_category === 'Overall';
+    const present = recs.filter(r => r.status === 'Present');
+    return { client, recs, overallOnly, present: present.length, total: overallOnly ? 0 : recs.length };
+  });
+  scored.sort((a, b) => {
+    if(a.overallOnly !== b.overallOnly) return a.overallOnly ? 1 : -1;
+    return (b.present / (b.total || 1)) - (a.present / (a.total || 1));
+  });
+
+  const cards = scored.map(s => {
+    const censusMissing = s.recs.some(r => r.audit_category === 'Census' && r.status !== 'Present');
+    const attrs = ' data-name="' + esc((s.client || '').toLowerCase()) + '"' +
+      ' data-cover="' + (s.overallOnly ? 'none' : (s.present === s.total ? 'full' : 'gap')) + '"' +
+      ' data-census="' + (censusMissing ? '1' : '0') + '"';
+    if(s.overallOnly){
+      const r = s.recs[0];
+      return '<div class="audit-card"' + attrs + '><div class="audit-card__head"><b>' + esc(s.client) + '</b>' +
+        '<span class="uzio-status uzio-status--neutral">' + esc(r.status) + '</span></div>' +
+        '<div class="uzio-progress"><div class="uzio-progress__fill" style="width:0%"></div></div>' +
+        (r.notes ? '<div class="audit-card__note">' + esc(r.notes) + '</div>' : '') + '</div>';
+    }
+    const pct = s.total ? (s.present / s.total * 100) : 0;
+    const fill = pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
+    const badge = pct === 100 ? 'success' : (pct >= 50 ? 'warning' : 'error');
+    const pips = s.recs.map(r =>
+      '<span class="cat-pip cat-pip--' + (r.status === 'Present' ? 'yes' : 'no') + '">' + esc(r.audit_category) + '</span>'
+    ).join('');
+    const notes = s.recs.filter(r => r.notes).map(r => r.audit_category + ' — ' + r.notes);
+    return '<div class="audit-card"' + attrs + '><div class="audit-card__head"><b>' + esc(s.client) + '</b>' +
+      '<span class="uzio-status uzio-status--' + badge + '">' + s.present + ' / ' + s.total + '</span></div>' +
+      '<div class="uzio-progress"><div class="uzio-progress__fill' + fill + '" style="width:' + pct + '%"></div></div>' +
+      '<div class="audit-card__cats">' + pips + '</div>' +
+      (notes.length ? '<div class="audit-card__note">' + esc(notes.join(' · ')) + '</div>' : '') + '</div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="uzio-callout"><h6 class="uzio-callout__title">' +
+    '<span class="uzio-icon uzio-icon--alert-bulb uzio-icon--sm"></span>Census is the recurring gap</h6>' +
+    '<p>Where an audit is missing it is most often Census. One case looks like a false negative rather than a real gap &mdash; see the note on InnovDel below.</p></div>' +
+    buildFilters(AUDIT_FILTERS) +
+    '<div class="audit-grid">' + cards + '</div>';
+
+  const records = Array.from(el.querySelectorAll('.audit-card')).map(c => ({
+    el: c, name: c.dataset.name, cover: c.dataset.cover, censusMissing: c.dataset.census === '1'
+  }));
+  wireFilters(el, AUDIT_FILTERS, records, (r, s) =>
+    (!s.q || r.name.indexOf(s.q) !== -1) &&
+    (s.audCover === 'all' || r.cover === s.audCover) &&
+    (!s.audCensus || r.censusMissing),
+    (n, total) => n + ' of ' + total + ' clients'
+  );
+}
+
+/* ==================== DOCUMENT TRANSFER ==================== */
+const DOC_STATUS_CLASS = {
+  'Complete': 'success',
+  'Completed with issues': 'warning',
+  'In progress': 'warning',
+  'Blocked': 'error',
+  'Nothing to transfer': 'neutral'
+};
+function num(n){ return n == null ? NIL : '<span class="tnum">' + Number(n).toLocaleString() + '</span>'; }
+const DOC_FILTERS = {
+  search: { id: 'docSearch', placeholder: 'Search client…' },
+  groups: [
+    { id: 'docStatus', options: [
+      { val: 'all', label: 'Any status' },
+      { val: 'Complete', label: 'Complete', dot: DOT.good },
+      { val: 'Completed with issues', label: 'With issues', dot: DOT.warn },
+      { val: 'notdone', label: 'Not done', dot: DOT.bad },
+      { val: 'Nothing to transfer', label: 'Nothing to transfer' }
+    ]}
+  ],
+  toggles: [{ id: 'docFailed', label: 'Has failed docs' }],
+  countId: 'docCount'
+};
+function renderDocuments(rows){
+  const el = panel('documents-content');
+  const sum = (f) => rows.reduce((a, r) => a + (r[f] || 0), 0);
+  const failed = sum('failed_docs');
+  const byStatus = (s) => rows.filter(r => r.status === s).length;
+  const filenameFails = sum('fail_filename_format');
+  const pctFilename = failed ? Math.round(filenameFails / failed * 100) : 0;
+
+  const order = ['Blocked', 'In progress', 'Completed with issues', 'Complete', 'Nothing to transfer'];
+  const sorted = rows.slice().sort((a, b) => {
+    const d = order.indexOf(a.status) - order.indexOf(b.status);
+    return d !== 0 ? d : (b.transfer_date || '').localeCompare(a.transfer_date || '');
+  });
+
+  const body = sorted.map(r => {
+    const breakdown = [];
+    if(r.fail_filename_format) breakdown.push('filename ' + r.fail_filename_format);
+    if(r.fail_employee_not_found) breakdown.push('no EE ' + r.fail_employee_not_found);
+    if(r.fail_unsupported_type) breakdown.push('bad type ' + r.fail_unsupported_type);
+    if(r.employees_skipped) breakdown.push(Number(r.employees_skipped).toLocaleString() + ' employees skipped');
+    const links = [];
+    if(r.jira_id) links.push('<a href="https://jira.uzio.com/browse/' + esc(r.jira_id) + '" target="_blank" rel="noopener">' + esc(r.jira_id) + '</a>');
+    if(r.drive_folder_url) links.push('<a href="' + esc(r.drive_folder_url) + '" target="_blank" rel="noopener">Drive</a>');
+    const bucket = (r.status === 'Blocked' || r.status === 'In progress') ? 'notdone' : r.status;
+    return '<tr data-name="' + esc((r.client_name || '').toLowerCase()) + '"' +
+      ' data-bucket="' + esc(bucket) + '" data-failed="' + (r.failed_docs ? '1' : '0') + '">' +
+      '<td class="name-cell"><b title="' + esc(r.client_name) + '">' + esc(r.client_name) + '</b>' +
+        (links.length ? '<div class="sub">' + links.join(' &middot; ') + '</div>' : '') + '</td>' +
+      '<td><span class="uzio-status uzio-status--' + (DOC_STATUS_CLASS[r.status] || 'neutral') + '">' + esc(r.status) + '</span></td>' +
+      '<td>' + fmtDate(r.transfer_date) + '</td>' +
+      '<td>' + num(r.total_docs) + '</td>' +
+      '<td>' + (r.failed_docs != null ? num(r.failed_docs) : NIL) + '</td>' +
+      '<td class="sub" style="font-size:11.5px">' + (breakdown.length ? esc(breakdown.join(' · ')) : NIL) + '</td>' +
+      '<td style="max-width:420px;white-space:normal;font-size:12px;color:var(--uzio-color-text-muted);line-height:1.5">' +
+        esc(r.notes || '') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="uzio-callout"><h6 class="uzio-callout__title">' +
+    '<span class="uzio-icon uzio-icon--alert-bulb uzio-icon--sm"></span>Most failures aren’t real failures</h6>' +
+    '<p>' + pctFilename + '% of all failed documents (' + filenameFails.toLocaleString() + ' of ' + failed.toLocaleString() + ') ' +
+    'come from one cause: the filename has no employee ID in the expected <code>prefix_employeeExtId_documentName</code> form. ' +
+    'In every mail that broke these down, they turned out to be company-level documents (handbooks, privacy notices, generic I-9 packets) ' +
+    'that were never meant to attach to an employee. The genuinely actionable failures are the smaller “employee not found” and ' +
+    '“unsupported file type” buckets.</p></div>' +
+    buildFilters(DOC_FILTERS) +
+    '<div class="table-shell"><table class="uzio-table" id="docTable">' +
+    '<thead><tr><th>Client</th><th>Status</th><th>Date</th><th>Total docs</th><th>Failed</th>' +
+    '<th>Failure breakdown</th><th>Notes</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+
+  const records = Array.from(el.querySelectorAll('#docTable tbody tr')).map(tr => ({
+    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket, hasFailed: tr.dataset.failed === '1'
+  }));
+  wireFilters(el, DOC_FILTERS, records, (r, s) =>
+    (!s.q || r.name.indexOf(s.q) !== -1) &&
+    (s.docStatus === 'all' || r.bucket === s.docStatus) &&
+    (!s.docFailed || r.hasFailed),
+    (n, total) => n + ' of ' + total + ' clients'
+  );
+
+  return { clients: rows.length, notDone: byStatus('Blocked') + byStatus('In progress') };
+}
+
+/* ==================== API ACTIVITY ==================== */
+// SocCode / CompanyJobTitle / W2DeliveryMethod are deliberately excluded — nobody
+// runs those onboarding APIs (CompanyJobTitle and W2DeliveryMethod have zero runs
+// on record; SocCode has 6). Showing them made every client look like it had a gap.
+const MODULES = [
+  ['EmployeeCensus','Census'], ['PriorPayroll','Prior Payroll'], ['PaymentMethodSetup','Payment Method'],
+  ['FedTaxWithholding','Federal Tax Withholding'], ['StateTaxWithholding','State Tax Withholding'],
+  ['EmployeeDeductions','Deductions'], ['WorkerCompensation',"Worker's Comp"],
+  ['EmployeeContributions','Contributions']
+];
+function slug(n){ return (n || '').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+// This view filters COLUMNS, not rows, so it builds the bar with the shared
+// helper but wires the behaviour itself.
+const API_FILTERS = {
+  search: { id: 'clientSearch', placeholder: 'Search client…' },
+  groups: [
+    { id: 'vendorFilter', options: [
+      { val: 'all', label: 'All vendors' },
+      { val: 'ADP', label: 'ADP', dot: DOT.info },
+      { val: 'Paycom', label: 'Paycom', dot: DOT.orange }
+    ]}
+  ],
+  toggles: [{ id: 'gapsOnly', label: 'Only clients with a gap' }],
+  countId: 'matrixCount'
+};
+function renderApi(rows){
+  const el = panel('api-content');
+  const clients = {};
+  rows.forEach(r => { if(!clients[r.fein]) clients[r.fein] = { name: r.client_name, vendor: r.vendor, fein: r.fein }; });
+  const list = Object.values(clients).sort((a,b) => a.name.localeCompare(b.name));
+  const byKey = {};
+  rows.forEach(r => { byKey[r.fein + '||' + r.module_key] = r; });
+
+
+  const th = list.map(c =>
+    '<th data-client="' + slug(c.name) + '" data-vendor="' + esc(c.vendor || '') + '" data-name="' + esc(c.name.toLowerCase()) + '">' +
+    esc(c.name) + '<div class="sub">' + esc(c.vendor || '—') + '</div></th>'
+  ).join('');
+
+  const body = MODULES.map(m =>
+    '<tr><td class="sticky-col">' + esc(m[1]) + '</td>' + list.map(c => {
+      const r = byKey[c.fein + '||' + m[0]];
+      const cs = slug(c.name);
+      if(r) return '<td class="mcell" data-client="' + cs + '" data-hit="1">' +
+        '<span class="uzio-status uzio-status--success">&#10003;</span>' +
+        '<div class="sub">' + (r.last_run_date ? r.last_run_date.slice(5).replace('-','/') : '') + ' &middot; ' + esc((r.run_by || '').split('.')[0]) + '</div></td>';
+      return '<td class="mcell" data-client="' + cs + '" data-hit="0"><span class="uzio-status uzio-status--error">&#10007;</span></td>';
+    }).join('') + '</tr>'
+  ).join('');
+
+  el.innerHTML = buildFilters(API_FILTERS) +
+    '<div class="table-shell"><table class="uzio-table matrix-table" id="matrixTable">' +
+      '<thead><tr><th class="sticky-col">Module</th>' + th + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+
+  const table = el.querySelector('#matrixTable');
+  const ths = Array.from(table.querySelectorAll('thead th[data-client]'));
+  const search = el.querySelector('#clientSearch');
+  const gapsOnly = el.querySelector('#gapsOnly');
+  const countEl = el.querySelector('#matrixCount');
+  let vendor = 'all';
+
+  function apply(){
+    const q = (search.value || '').toLowerCase().trim();
+    let shown = 0;
+    ths.forEach(th => {
+      const cs = th.dataset.client;
+      let ok = true;
+      if(q && th.dataset.name.indexOf(q) === -1) ok = false;
+      if(vendor !== 'all' && th.dataset.vendor !== vendor) ok = false;
+      if(gapsOnly.checked && !table.querySelector('td[data-client="' + cs + '"][data-hit="0"]')) ok = false;
+      table.querySelectorAll('[data-client="' + cs + '"]').forEach(c => c.classList.toggle('is-hidden', !ok));
+      if(ok) shown++;
+    });
+    countEl.textContent = shown + ' of ' + ths.length + ' clients';
+  }
+  search.addEventListener('input', apply);
+  gapsOnly.addEventListener('change', apply);
+  wireChips(el.querySelector('#vendorFilter'), v => { vendor = v; apply(); });
+  apply();
+  return { clientCount: list.length };
+}
+
+/* ==================== OPEN ITEMS ==================== */
+const SEV = [
+  ['Needs action', 'critical'],
+  ['Worth checking', 'warning'],
+  ['Pending', 'alert']
+];
+const OPEN_FILTERS = {
+  search: { id: 'openSearch', placeholder: 'Search open items…' },
+  groups: [
+    { id: 'openSev', options: [
+      { val: 'all', label: 'All severities' },
+      { val: 'Needs action', label: 'Needs action', dot: DOT.bad },
+      { val: 'Worth checking', label: 'Worth checking', dot: DOT.warn },
+      { val: 'Pending', label: 'Pending', dot: DOT.info }
+    ]}
+  ],
+  countId: 'openCount'
+};
+function renderOpen(rows){
+  const el = panel('open-content');
+
+  const groups = SEV.map(([sev, cls]) => {
+    const items = rows.filter(r => r.severity === sev);
+    if(!items.length) return '';
+    return '<div class="section-block" data-sev-block="' + esc(sev) + '">' +
+      '<div class="uzio-section-label">' + esc(sev) + ' &middot; ' + items.length + '</div>' +
+      '<div class="err-list">' + items.map(r =>
+        '<div class="uzio-item uzio-item--' + cls + '" data-sev="' + esc(sev) + '"' +
+        ' data-text="' + esc(((r.title || '') + ' ' + (r.description || '')).toLowerCase()) + '">' +
+        '<span class="uzio-item__bar"></span>' +
+        '<div class="uzio-item__body"><div class="uzio-item__title">' + esc(r.title) + '</div>' +
+        '<div class="uzio-item__desc">' + esc(r.description || '') + '</div></div></div>'
+      ).join('') + '</div></div>';
+  }).join('');
+
+  el.innerHTML = buildFilters(OPEN_FILTERS) + groups;
+
+  const records = Array.from(el.querySelectorAll('.uzio-item')).map(it => ({
+    el: it, sev: it.dataset.sev, text: it.dataset.text
+  }));
+  wireFilters(el, OPEN_FILTERS, records, (r, s) =>
+    (!s.q || r.text.indexOf(s.q) !== -1) &&
+    (s.openSev === 'all' || r.sev === s.openSev),
+    (n, total) => n + ' of ' + total + ' items'
+  );
+
+  // A severity heading with every item filtered out would just be a dangling
+  // label, so hide the whole block once its list empties.
+  const syncBlocks = () => el.querySelectorAll('[data-sev-block]').forEach(block => {
+    const any = Array.from(block.querySelectorAll('.uzio-item')).some(i => i.style.display !== 'none');
+    block.style.display = any ? '' : 'none';
+  });
+  el.addEventListener('input', syncBlocks);
+  el.addEventListener('click', syncBlocks);
+  syncBlocks();
+}
+
+/* ==================== INIT ==================== */
+async function loadAll(){
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('is-spinning');
+  const out = {};
+  const fail = (id) => (e) => { panel(id).innerHTML = '<div class="err-box">' + esc(e.message) + '</div>'; };
+
+  await Promise.all([
+    // The detail sub-page shows full street addresses, so pull the address
+    // columns too — not just the city/state the old grid column needed.
+    sbGet('client_overview?select=*,client_work_locations(work_location_name,address_line1,address_line2,city,state,zip_code,is_primary)&order=dsp_name.asc')
+      .then(r => { out.overview = renderOverview(r); }).catch(fail('overview-content')),
+    sbGet('historical_data_checklist?select=*&order=client_name.asc')
+      .then(r => { DATA.historical = r; renderHistorical(r); }).catch(fail('historical-content')),
+    sbGet('audit_coverage?select=*&order=client_name.asc')
+      .then(r => { DATA.audit = r; renderAudit(r); }).catch(fail('audit-content')),
+    sbGet('document_transfer?select=*&order=client_name.asc')
+      .then(r => { DATA.documents = r; out.docs = renderDocuments(r); }).catch(fail('documents-content')),
+    sbGet('api_activity_runs?select=*&order=client_name.asc')
+      .then(r => { DATA.api = r; out.api = renderApi(r); }).catch(fail('api-content')),
+    sbGet('open_items?select=*&order=date_added.desc')
+      .then(r => { DATA.open = r; renderOpen(r); }).catch(fail('open-content'))
+  ]);
+
+  const parts = [];
+  if(out.overview) parts.push(out.overview.total + ' DSPs · ' + out.overview.withFein + ' matched to prod');
+  if(out.api) parts.push(out.api.clientCount + ' clients with API runs');
+  if(out.docs) parts.push('Docs: ' + out.docs.clients + ' clients · ' + out.docs.notDone + ' not done');
+  parts.push('Historical &amp; Audit: 14 clients');
+  document.getElementById('sidebar-foot').innerHTML = parts.join('<br>');
+  document.getElementById('meta-text').textContent = 'Live from Supabase';
+  btn.classList.remove('is-spinning');
+}
+
+(function(){
+  const items = document.querySelectorAll('.uzio-sidebar-x__item[data-view]');
+  const title = document.getElementById('header-title');
+
+  /* `client` is a sub-page of Overview: it has no sidebar entry of its own, so
+     the Overview item stays lit while you're on it. */
+  window.showView = function(view, headerText){
+    document.querySelectorAll('.app-view').forEach(v => v.classList.remove('is-active'));
+    document.getElementById('view-' + view).classList.add('is-active');
+    const navFor = view === 'client' ? 'overview' : view;
+    items.forEach(i => i.classList.toggle('uzio-sidebar-x__item--active', i.dataset.view === navFor));
+    const active = Array.from(items).find(i => i.dataset.view === navFor);
+    title.textContent = headerText || (active ? active.dataset.title : '');
+    window.scrollTo(0, 0);
+  };
+
+  items.forEach(el => el.addEventListener('click', () => showView(el.dataset.view)));
+  document.getElementById('client-back').addEventListener('click', () => showView('overview'));
+
+  const btn = document.getElementById('refresh-btn');
+  btn.addEventListener('click', loadAll);
+  btn.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); loadAll(); } });
+})();
+
+loadAll();
+</script>
+</body>
+</html>

@@ -41,6 +41,12 @@ ROWS = [
     # Msg 16 (2026-08-04).
     ("Flash Hub Delivery", "Complete", "2026-08-04", 2280, 0, None, None, None,
      "2,280 documents, all uploaded successfully, no failures recorded."),
+
+    # Msg 19 (2026-08-13): "InnovDel documents have been uploaded successfully
+    # today". No counts were stated, so total/failed stay NULL rather than guessed.
+    ("InnovDel Inc", "Complete", "2026-08-13", None, None, None, None, None,
+     "Reported uploaded successfully on 08/13. The mail states no document counts, "
+     "so total/failed are deliberately left blank rather than estimated."),
 ]
 
 SQL = """
@@ -49,16 +55,18 @@ insert into document_transfer
    fail_filename_format, fail_employee_not_found, fail_unsupported_type,
    notes, source_message_id)
 values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+-- coalesce so re-running this can only add detail, never blank out a column
+-- that was filled in by hand or by the other document-transfer source.
 on conflict (client_name) do update set
-  status = excluded.status,
-  transfer_date = excluded.transfer_date,
-  total_docs = excluded.total_docs,
-  failed_docs = excluded.failed_docs,
-  fail_filename_format = excluded.fail_filename_format,
-  fail_employee_not_found = excluded.fail_employee_not_found,
-  fail_unsupported_type = excluded.fail_unsupported_type,
-  notes = excluded.notes,
-  source_message_id = excluded.source_message_id,
+  status = coalesce(excluded.status, document_transfer.status),
+  transfer_date = coalesce(excluded.transfer_date, document_transfer.transfer_date),
+  total_docs = coalesce(excluded.total_docs, document_transfer.total_docs),
+  failed_docs = coalesce(excluded.failed_docs, document_transfer.failed_docs),
+  fail_filename_format = coalesce(excluded.fail_filename_format, document_transfer.fail_filename_format),
+  fail_employee_not_found = coalesce(excluded.fail_employee_not_found, document_transfer.fail_employee_not_found),
+  fail_unsupported_type = coalesce(excluded.fail_unsupported_type, document_transfer.fail_unsupported_type),
+  notes = coalesce(excluded.notes, document_transfer.notes),
+  source_message_id = coalesce(excluded.source_message_id, document_transfer.source_message_id),
   updated_at = now()
 """
 

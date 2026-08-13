@@ -169,9 +169,12 @@ def populate_historical(cur):
         "insert into historical_data_checklist "
         "(client_name, vendor, report_category, status, last_checked_date, notes) "
         "values (%s,%s,%s,%s,%s,%s) "
+        # coalesce so a blank in the seed data can't erase a hand-entered value
         "on conflict (client_name, report_category) do update set "
-        "vendor=excluded.vendor, status=excluded.status, "
-        "last_checked_date=excluded.last_checked_date, notes=excluded.notes, updated_at=now()"
+        "vendor=coalesce(excluded.vendor, historical_data_checklist.vendor), "
+        "status=coalesce(excluded.status, historical_data_checklist.status), "
+        "last_checked_date=coalesce(excluded.last_checked_date, historical_data_checklist.last_checked_date), "
+        "notes=coalesce(excluded.notes, historical_data_checklist.notes), updated_at=now()"
     )
     for r in rows:
         cur.execute(sql, r)
@@ -190,8 +193,10 @@ def populate_audit(cur):
         "insert into audit_coverage (client_name, audit_category, status, checked_date, source, notes) "
         "values (%s,%s,%s,%s,%s,%s) "
         "on conflict (client_name, audit_category) do update set "
-        "status=excluded.status, checked_date=excluded.checked_date, "
-        "source=excluded.source, notes=excluded.notes, updated_at=now()"
+        "status=coalesce(excluded.status, audit_coverage.status), "
+        "checked_date=coalesce(excluded.checked_date, audit_coverage.checked_date), "
+        "source=coalesce(excluded.source, audit_coverage.source), "
+        "notes=coalesce(excluded.notes, audit_coverage.notes), updated_at=now()"
     )
     for r in rows:
         cur.execute(sql, r)
@@ -224,11 +229,17 @@ def populate_api_activity(cur):
 
 
 def populate_open_items(cur):
-    cur.execute("delete from open_items")  # re-seed cleanly each run — no natural unique key
-    sql = "insert into open_items (severity, title, description) values (%s,%s,%s)"
-    for r in OPEN_ITEMS:
-        cur.execute(sql, r)
-    return len(OPEN_ITEMS)
+    """DISABLED on purpose — open_items is human-owned.
+
+    This used to `delete from open_items` and re-seed from the OPEN_ITEMS list
+    above, which is fine for a one-off but destroys hand-written items every
+    time it runs. Now that the populate scripts run on a schedule, this table is
+    curated in Supabase by a person and no script writes to it.
+
+    The OPEN_ITEMS list is kept above only as the record of the original seed.
+    """
+    cur.execute("select count(*) from open_items")
+    return cur.fetchone()[0]
 
 
 def main():
@@ -245,7 +256,7 @@ def main():
     print(f"historical_data_checklist: {n_hist} rows upserted")
     print(f"audit_coverage: {n_audit} rows upserted")
     print(f"api_activity_runs: {n_api} rows upserted")
-    print(f"open_items: {n_open} rows (re-seeded)")
+    print(f"open_items: {n_open} rows LEFT UNTOUCHED (human-owned)")
 
     for t in ("historical_data_checklist", "audit_coverage", "api_activity_runs", "open_items"):
         cur.execute(f"select count(*) from {t}")

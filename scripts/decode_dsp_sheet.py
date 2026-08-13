@@ -1,15 +1,32 @@
 """Decode the base64 Drive export dump of Shruti's 'DSP Implementation' tab,
-save it as a real CSV, and print header + row-count stats (no full dump)."""
+save it as a real CSV, and print header + row-count stats (no full dump).
+
+Usage:
+    python decode_dsp_sheet.py <path-to-download_file_content-dump.txt>
+
+The dump is whatever the Drive connector's download_file_content wrote (a JSON
+envelope with base64 in `content`). Its filename changes every run, so the path
+must be passed in — hardcoding one session's tool-result path made this script
+unrunnable on any later run, including the scheduled refresh.
+"""
 import csv
 import json
 import os
+import sys
 
-SRC = (
-    r"C:\Users\shobhit.sharma\.claude\projects\C--Users-shobhit-sharma-Downloads-Uzio-Code"
-    r"\020d2c3e-92b4-4469-b883-0cd65b12a2de\tool-results"
-    r"\mcp-4333c226-b40d-431b-b6ee-b7000f17de5b-download_file_content-1786536728894.txt"
+OUT_CSV = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "shruti_dsp_implementation.csv",
 )
-OUT_CSV = r"C:\Users\shobhit.sharma\Downloads\dsp-ops-dashboard\data\shruti_dsp_implementation.csv"
+
+if len(sys.argv) < 2:
+    sys.exit(
+        "Pass the Drive download dump path.\n"
+        "  1. Call download_file_content on file 1GRnfKMp4tcjGXWhkx5rpRKQD8eadikZPNqeufctoXsI\n"
+        "     with exportMimeType 'text/csv'\n"
+        "  2. python decode_dsp_sheet.py <the tool-results .txt path it saved>"
+    )
+SRC = sys.argv[1]
 
 with open(SRC, encoding="utf-8") as f:
     payload = json.load(f)

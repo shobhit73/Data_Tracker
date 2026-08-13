@@ -12,6 +12,7 @@ columns are ever reordered.
 import csv
 import datetime
 import os
+import re
 
 from supabase_helper import connect
 
@@ -36,9 +37,33 @@ COL = {
     "state": 17,
     "data_transfer_paycom": 29,
     "data_transfer_adp": 30,
+    "high_level_requirements": 20,
+    "benefits_details": 66,
+    "benefits_deductions_via": 67,
 }
 
 RAG_MAP = {"red": "Red", "amber": "Amber", "green": "Green"}
+
+# The "High Level Requirement Details" cell is a small structured block:
+#   Benefits: Decisely
+#   401K: HI
+#   Everify: Yes
+#   ...
+# Pull just the Benefits line. Horizontal whitespace only in the pattern —
+# a plain \s* would swallow the newline and capture the 401K line instead.
+BENEFITS_LINE = re.compile(r"benefits?[^\S\n]*[:\-][^\S\n]*([^\n]*)", re.I)
+
+
+def parse_benefits_requirement(cell):
+    """Return what the sheet records for Benefits, verbatim.
+
+    Deliberately NOT reduced to yes/no: the recorded values are things like
+    'Decisely', 'Innovative BPS', 'TBD', 'Not using our platform', 'Yes. they
+    will use Uzio benefits module'. Which platform a client goes with IS the
+    answer, so collapsing it to a boolean would throw away the useful part.
+    """
+    m = BENEFITS_LINE.search(cell or "")
+    return (m.group(1).strip() or None) if m else None
 
 
 def parse_date(s):
@@ -130,6 +155,9 @@ def main():
             "previous_system": (row[COL["previous_system"]] or "").strip() or None,
             "implementor": (row[COL["implementor"]] or "").strip() or None,
             "state": (row[COL["state"]] or "").strip() or None,
+            "benefits_requirement": parse_benefits_requirement(row[COL["high_level_requirements"]]),
+            "benefits_details": (row[COL["benefits_details"]] or "").strip() or None,
+            "benefits_deductions_via": (row[COL["benefits_deductions_via"]] or "").strip() or None,
             "source_row_notes": "; ".join(notes) or None,
         }
         for k in ("expected_tt_live_date", "payroll_cutoff_date"):
@@ -151,7 +179,15 @@ def main():
     cols = list(records[0].keys())
     placeholders = ", ".join(["%s"] * len(cols))
     collist = ", ".join(cols)
-    updates = ", ".join(f"{c} = excluded.{c}" for c in cols if c != "dsp_short_code")
+    # coalesce, not a blind overwrite: the sheet wins wherever it actually has a
+    # value, but a blank cell must not wipe something filled in by hand in
+    # Supabase. 62 DSPs have no vendor in the sheet, so a plain
+    # `col = excluded.col` would blank out every manually-corrected vendor on
+    # each scheduled run.
+    updates = ", ".join(
+        f"{c} = coalesce(excluded.{c}, client_overview.{c})"
+        for c in cols if c != "dsp_short_code"
+    )
     sql = (
         f"insert into client_overview ({collist}) values ({placeholders}) "
         f"on conflict (dsp_short_code) do update set {updates}, updated_at = now()"

@@ -12,6 +12,7 @@ TABLES = [
     "audit_coverage",
     "api_activity_runs",
     "open_items",
+    "client_data_coverage",
 ]
 
 if __name__ == "__main__":

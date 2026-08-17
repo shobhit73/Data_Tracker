@@ -107,7 +107,6 @@ h1,h2,h3,h4{margin:0;color:var(--uzio-color-text-heading)}
 
 .uzio-app-stage{padding:104px 32px 40px 272px;max-width:1720px}
 .uzio-page-title{font-size:30px;font-weight:400;line-height:38px;color:var(--uzio-color-text-heading);margin:0 0 4px}
-.uzio-subtitle{font-size:14px;color:var(--uzio-color-text-muted);margin:0 0 22px;max-width:80ch}
 .app-view{display:none}
 .app-view.is-active{display:block}
 
@@ -255,6 +254,52 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 .uzio-status--warning{color:var(--uzio-color-warning);background:var(--uzio-color-warning-bg)}
 .uzio-status--neutral{color:var(--uzio-color-text-muted);background:var(--uzio-color-bg-subtle)}
 
+/* ---------- historical coverage ---------- */
+.hist-client{background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
+  border-radius:var(--uzio-radius-md);margin-bottom:10px;overflow:hidden}
+/* Grid, not flex: the columns must line up down the list, otherwise the vendor
+   chip and the date drift left and right with the length of each client name. */
+.hist-head{display:grid;grid-template-columns:12px minmax(0,1fr) 62px 170px 150px 92px;
+  align-items:center;gap:12px;width:100%;padding:12px 16px;cursor:pointer;
+  font-family:inherit;text-align:left;color:inherit}
+.hist-head:hover{background:var(--uzio-color-bg-row-hover)}
+.hist-head:focus-visible{outline:2px solid var(--uzio-color-action);outline-offset:-2px}
+.hist-head__caret{color:var(--uzio-color-text-faint);font-size:11px;
+  transition:transform var(--uzio-motion-base);line-height:1}
+.hist-client.is-open .hist-head__caret{transform:rotate(90deg)}
+.hist-head__name{font-weight:700;font-size:13.5px;color:var(--uzio-color-text-heading);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-head .uzio-chip{justify-self:start}
+.hist-head__meta{font-size:11.5px;color:var(--uzio-color-text-faint);white-space:nowrap}
+.hist-head__bar{width:100%}
+.hist-head .uzio-status{justify-self:end}
+@media (max-width:1100px){
+  /* Not enough room for six columns — drop the two that are context rather
+     than status, keeping the name, the bar and the count. */
+  .hist-head{grid-template-columns:12px minmax(0,1fr) 62px 90px}
+  .hist-head__meta,.hist-head__bar{display:none}
+}
+.hist-body{display:none;padding:2px 16px 16px;border-top:1px solid var(--uzio-color-divider)}
+.hist-client.is-open .hist-body{display:block}
+.hist-cat{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--uzio-color-text-muted);margin:14px 0 6px}
+.hist-row{display:flex;align-items:flex-start;gap:12px;padding:7px 0;
+  border-top:1px solid var(--uzio-color-divider);font-size:13px}
+.hist-row:first-of-type{border-top:none}
+.hist-row__name{flex:1;min-width:0;color:var(--uzio-color-text-heading)}
+.hist-row__range{font-size:11px;color:var(--uzio-color-text-faint);margin-top:2px}
+.hist-row__units{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;flex-shrink:0;max-width:58%}
+.unit-pill{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:var(--uzio-radius-sm);white-space:nowrap}
+.unit-pill--yes{color:var(--uzio-color-success);background:var(--uzio-color-success-bg)}
+.unit-pill--no{color:var(--uzio-color-error);background:var(--uzio-color-error-bg)}
+.unit-pill--na{color:var(--uzio-color-text-muted);background:var(--uzio-color-bg-subtle)}
+.unit-pill--link{text-decoration:none;cursor:pointer}
+.unit-pill--link:hover{outline:1px solid currentColor}
+.hist-head__drive{font-size:11px;font-weight:700;color:var(--uzio-color-action);text-decoration:none;white-space:nowrap}
+.hist-head__drive:hover{text-decoration:underline}
+.doc-flag{font-size:10px;font-weight:700;color:var(--uzio-color-warning);
+  background:var(--uzio-color-warning-bg);padding:1px 6px;border-radius:var(--uzio-radius-sm);margin-left:6px}
+
 /* ---------- audit cards ---------- */
 .audit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
 .audit-card{background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
@@ -288,10 +333,6 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 .uzio-item__title{font-size:13.5px;font-weight:700;color:var(--uzio-color-text-heading);margin-bottom:3px}
 .uzio-item__desc{font-size:12.5px;color:var(--uzio-color-text-body);line-height:1.55}
 
-.uzio-callout{background:var(--uzio-color-info-bg);border:1px dashed var(--uzio-color-info-border);
-  color:var(--uzio-color-info-text);border-radius:var(--uzio-radius-sm);padding:14px;margin-bottom:20px}
-.uzio-callout__title{display:flex;align-items:center;gap:6px;font-weight:700;font-size:14px;margin:0 0 5px;color:inherit}
-.uzio-callout p{margin:0;font-size:12.5px;line-height:1.55}
 
 .skeleton{padding:44px;text-align:center;color:var(--uzio-color-text-faint);font-size:13px;
   background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);border-radius:var(--uzio-radius-lg)}
@@ -318,6 +359,9 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
   <button class="uzio-sidebar-x__item" data-view="api" data-title="API Activity">
     <span class="uzio-icon uzio-icon--task"></span> <span class="nav-label">API Activity</span>
   </button>
+  <button class="uzio-sidebar-x__item" data-view="coverage" data-title="Data Coverage">
+    <span class="uzio-icon uzio-icon--hr-compliance"></span> <span class="nav-label">Data Coverage</span>
+  </button>
   <button class="uzio-sidebar-x__item" data-view="open" data-title="Open Items">
     <span class="uzio-icon uzio-icon--alert-bulb"></span> <span class="nav-label">Open Items</span>
   </button>
@@ -336,7 +380,6 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 <main class="uzio-app-stage">
   <section class="app-view is-active" id="view-overview">
     <h1 class="uzio-page-title">Client Overview</h1>
-    <p class="uzio-subtitle">Every DSP in Shruti's Implementation Onboarding Tracker, cross-matched against prod for FEIN and work locations.</p>
     <div id="overview-content" class="skeleton">Loading&hellip;</div>
   </section>
 
@@ -352,31 +395,31 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 
   <section class="app-view" id="view-historical">
     <h1 class="uzio-page-title">Historical Data</h1>
-    <p class="uzio-subtitle">Required-report collection for the 14 clients on Rohit Kaushik's audit roster, checked against the Historical Data reference doc.</p>
     <div id="historical-content" class="skeleton">Loading&hellip;</div>
   </section>
 
   <section class="app-view" id="view-audit">
     <h1 class="uzio-page-title">Audit Coverage</h1>
-    <p class="uzio-subtitle">The same 14 clients, from Rohit's daily audit mail cross-checked against each Audit Files folder.</p>
     <div id="audit-content" class="skeleton">Loading&hellip;</div>
   </section>
 
   <section class="app-view" id="view-documents">
     <h1 class="uzio-page-title">Document Transfer</h1>
-    <p class="uzio-subtitle">Employee-document migration from ADP / Paycom into Uzio, tracked from the implementation team's transfer mails.</p>
     <div id="documents-content" class="skeleton">Loading&hellip;</div>
   </section>
 
   <section class="app-view" id="view-api">
     <h1 class="uzio-page-title">API Activity</h1>
-    <p class="uzio-subtitle">Which onboarding module has run for which client, when, and who ran it &mdash; from the PHIX-72859 run logs.</p>
     <div id="api-content" class="skeleton">Loading&hellip;</div>
+  </section>
+
+  <section class="app-view" id="view-coverage">
+    <h1 class="uzio-page-title">Data Coverage</h1>
+    <div id="coverage-content" class="skeleton">Loading&hellip;</div>
   </section>
 
   <section class="app-view" id="view-open">
     <h1 class="uzio-page-title">Open Items</h1>
-    <p class="uzio-subtitle">Everything worth following up on, surfaced while assembling the other four views.</p>
     <div id="open-content" class="skeleton">Loading&hellip;</div>
   </section>
 </main>
@@ -546,6 +589,24 @@ function mentionsClient(text, name){
   return nt.indexOf(' ' + first + ' ') !== -1;
 }
 
+/* Which platform the client is migrating from, per the sheet's "Previous
+   System" column. 'New' means they were on no platform at all — worth calling
+   out rather than showing as a bare word, because it changes what onboarding
+   work applies (no data transfer, no historical pull).
+
+   NOTE: this is used in place of the sheet's Data Transfer (ADP)/(Paycom)
+   columns, which look like a vendor flag but are not one — they are free-text
+   checklists, and people write ADP-column notes for Paycom clients. Inferring
+   a vendor from them disagreed with Previous System for 7 of 37 clients. */
+function sourceCell(previousSystem){
+  const v = (previousSystem || '').trim();
+  if(!v) return NIL;
+  if(v.toLowerCase() === 'new'){
+    return '<span class="uzio-status uzio-status--success">New</span>';
+  }
+  return esc(v);
+}
+
 /* Build a date string from the LOCAL calendar parts. Do not reach for
    toISOString() here: it converts to UTC first, so local midnight on the 1st
    becomes the previous month's last day in any timezone ahead of UTC — which
@@ -584,7 +645,7 @@ function renderOverview(rows){
     return '<tr class="row-link" tabindex="0" data-code-raw="' + esc(r.dsp_short_code) + '"' +
       ' data-name="' + esc((r.dsp_name || '').toLowerCase()) + '"' +
       ' data-code="' + esc((r.dsp_short_code || '').toLowerCase()) + '"' +
-      ' data-vendor="' + esc(r.vendor || 'none') + '"' +
+      ' data-source="' + esc(r.previous_system || 'none') + '"' +
       ' data-bucket="' + esc(statusBucket(r.final_status)) + '"' +
       ' data-fein="' + (r.fein ? '1' : '0') + '"' +
       // FEIN is searchable even though it is no longer a visible column — it is
@@ -595,7 +656,7 @@ function renderOverview(rows){
       '<td class="name-cell"><b title="' + esc(r.dsp_name) + '">' + esc(r.dsp_name) + '</b>' +
         '<div class="sub">' + esc(r.dsp_short_code) +
         (locs.length ? ' &middot; ' + locs.length + ' location' + (locs.length > 1 ? 's' : '') : '') + '</div></td>' +
-      '<td>' + (r.vendor ? esc(r.vendor) : NIL) + '</td>' +
+      '<td>' + sourceCell(r.previous_system) + '</td>' +
       '<td>' + (r.final_status ? esc(r.final_status) : NIL) + '</td>' +
       '<td>' + fmtDate(r.actual_tt_live_date) + '</td>' +
       '<td>' + fmtDate(r.payroll_live_date) + '</td>' +
@@ -613,10 +674,11 @@ function renderOverview(rows){
         '<button class="uzio-filter-chip" data-val="Handed over">Handed over</button>' +
         '<button class="uzio-filter-chip" data-val="Exited"><span class="uzio-filter-chip__dot" style="background:' + DOT.bad + '"></span>Exited</button>' +
       '</div>' +
-      '<div class="chip-group" id="ovVendor">' +
-        '<button class="uzio-filter-chip" data-val="all">Any vendor</button>' +
+      '<div class="chip-group" id="ovSource">' +
+        '<button class="uzio-filter-chip" data-val="all">Any source</button>' +
         '<button class="uzio-filter-chip" data-val="ADP"><span class="uzio-filter-chip__dot" style="background:' + DOT.info + '"></span>ADP</button>' +
         '<button class="uzio-filter-chip" data-val="Paycom"><span class="uzio-filter-chip__dot" style="background:' + DOT.orange + '"></span>Paycom</button>' +
+        '<button class="uzio-filter-chip" data-val="New"><span class="uzio-filter-chip__dot" style="background:' + DOT.good + '"></span>New</button>' +
       '</div>' +
       '<label class="toggle"><input type="checkbox" id="ovNoFein"> Not matched to prod</label>' +
     '</div>' +
@@ -642,7 +704,7 @@ function renderOverview(rows){
       '<span class="result-count" id="ovCount"></span>' +
     '</div>' +
     '<div class="table-shell"><table class="uzio-table" id="ovTable">' +
-      '<thead><tr><th>DSP</th><th>Vendor</th><th>Final status</th>' +
+      '<thead><tr><th>DSP</th><th>Source</th><th>Final status</th>' +
       '<th class="sortable" data-sort="tt">TT live</th>' +
       '<th class="sortable" data-sort="pay">Payroll live</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></div>' +
@@ -664,7 +726,7 @@ function renderOverview(rows){
     codeRaw: tr.dataset.codeRaw,
     name: tr.dataset.name,
     bucket: tr.dataset.bucket,
-    vendor: tr.dataset.vendor,
+    source: tr.dataset.source,
     hasFein: tr.dataset.fein === '1',
     fein: tr.dataset.feinval,
     tt: tr.dataset.tt,
@@ -672,7 +734,7 @@ function renderOverview(rows){
   }));
 
   const state = {
-    q: '', status: 'all', vendor: 'all', noFein: false,
+    q: '', status: 'all', source: 'all', noFein: false,
     dateField: 'either', from: '', to: '',
     sortKey: null, sortDir: 'asc',
     page: 0, pageSize: PAGE_SIZES[0]
@@ -691,7 +753,7 @@ function renderOverview(rows){
       if(!hit) return false;
     }
     if(state.status !== 'all' && r.bucket !== state.status) return false;
-    if(state.vendor !== 'all' && r.vendor !== state.vendor) return false;
+    if(state.source !== 'all' && r.source !== state.source) return false;
     if(state.noFein && r.hasFein) return false;
     if(state.from || state.to){
       // 'either' means the DSP shows up if EITHER go-live date lands in the
@@ -746,7 +808,7 @@ function renderOverview(rows){
   });
   $('#ovNoFein').addEventListener('change', e => { state.noFein = e.target.checked; state.page = 0; apply(); });
   wireChips($('#ovStatus'), v => { state.status = v; state.page = 0; apply(); });
-  wireChips($('#ovVendor'), v => { state.vendor = v; state.page = 0; apply(); });
+  wireChips($('#ovSource'), v => { state.source = v; state.page = 0; apply(); });
 
   $('#ovDateField').addEventListener('change', e => { state.dateField = e.target.value; state.page = 0; apply(); });
 
@@ -842,18 +904,20 @@ function showClient(code){
             : 'Not matched to a prod employer yet, so no locations are available.') + '</p>';
 
   panel('client-content').innerHTML =
+    // No subtitle: short code, previous system and status all appear in the
+    // Identity and Milestones cards immediately below.
     '<h1 class="uzio-page-title">' + esc(r.dsp_name) + '</h1>' +
-    '<p class="uzio-subtitle">' + esc(r.dsp_short_code) +
-      (r.vendor ? ' &middot; ' + esc(r.vendor) : '') +
-      (r.final_status ? ' &middot; ' + esc(r.final_status) : '') + '</p>' +
     '<div class="detail-grid">' +
       '<div class="detail-card"><h3>Identity</h3>' +
         kv('DSP short code', esc(r.dsp_short_code)) +
         kv('FEIN', r.fein ? '<span class="tnum">' + esc(r.fein) + '</span>' : null) +
-        kv('Vendor', r.vendor ? esc(r.vendor) : null) +
+        // "Previous system" is the sheet's own field and is filled for 98 of 100
+        // DSPs. The old inferred "Vendor" row was dropped from here: it came from
+        // reading the Data Transfer (ADP)/(Paycom) note columns, which contradict
+        // Previous System for 7 of the 37 clients that had both.
+        kv('Previous system', sourceCell(r.previous_system)) +
         kv('State', r.state ? esc(r.state) : null) +
         kv('Pay frequency', r.frequency ? esc(r.frequency) : null) +
-        kv('Previous system', r.previous_system ? esc(r.previous_system) : null) +
         kv('Implementor', r.implementor ? esc(r.implementor) : null) +
       '</div>' +
       '<div class="detail-card"><h3>Milestones</h3>' +
@@ -867,10 +931,12 @@ function showClient(code){
         (locs.length ? ' (' + locs.length + ')' : '') + '</h3>' + locHtml + '</div>' +
     '</div>' +
     benefitsSection(r) +
+    // Kept, but as a plain section rather than a callout — this is data lifted
+    // out of the sheet's own cell, not an explanation of the page.
     (r.source_row_notes
-      ? '<div class="uzio-callout"><h6 class="uzio-callout__title">' +
-        '<span class="uzio-icon uzio-icon--alert-bulb uzio-icon--sm"></span>Notes from the source sheet</h6>' +
-        '<p>' + esc(r.source_row_notes) + '</p></div>'
+      ? section('Notes from the source sheet',
+          '<div class="detail-card"><div style="font-size:12.5px;color:var(--uzio-color-text-body);' +
+          'line-height:1.6;white-space:pre-line">' + esc(r.source_row_notes) + '</div></div>')
       : '') +
     clientApiSection(r) +
     clientHistoricalSection(r) +
@@ -957,34 +1023,50 @@ function clientApiSection(client){
     '<tbody>' + body + '</tbody></table></div>', ran + ' of ' + MODULES.length + ' modules run');
 }
 
+// Joins on dsp_short_code — historical_scope keys off client_overview directly,
+// so unlike the audit/document sections this needs no name matching.
 function clientHistoricalSection(client){
-  const rows = (DATA.historical || []).filter(h => sameClient(h.client_name, client.dsp_name));
-  if(!rows.length){
-    return section('Historical Data', emptyNote('Not on the historical-data roster (14 clients are tracked).'));
+  const sc = (DATA.histScope || []).find(s => s.dsp_short_code === client.dsp_short_code);
+  if(!sc){
+    const why = (client.previous_system || '').trim().toLowerCase() === 'new'
+      ? 'New to the platform — there is no previous system to pull historical data from.'
+      : 'Not in the historical-data window (migrating DSPs are tracked for 30 days after payroll go-live).';
+    return section('Historical Data', emptyNote(why));
   }
-  const overall = rows.find(h => h.report_category === 'Overall');
-  const detail = rows.filter(h => h.report_category !== 'Overall');
-  let inner = '';
-  if(overall){
-    inner += '<p style="margin:0 0 10px"><span class="uzio-status uzio-status--' + histClass(overall.status) + '">' +
-      esc(overall.status) + '</span>' +
-      (overall.notes ? ' <span style="font-size:12.5px;color:var(--uzio-color-text-muted)">' + esc(overall.notes) + '</span>' : '') +
-      '</p>';
-  }
-  if(detail.length){
-    const order = HIST_ORDER.filter(c => detail.some(d => d.report_category === c));
-    inner += '<div class="table-shell table-shell--short"><table class="uzio-table">' +
-      '<thead><tr><th>Report</th><th>Status</th><th>Note</th></tr></thead><tbody>' +
-      order.map(cat => {
-        const d = detail.find(x => x.report_category === cat);
-        return '<tr><td>' + esc(cat) + '</td>' +
-          '<td><span class="uzio-status uzio-status--' + histClass(d.status) + '">' + esc(d.status) + '</span></td>' +
-          '<td style="color:var(--uzio-color-text-muted);font-size:12.5px">' + esc(d.notes || '') + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
-  } else if(overall){
-    inner += emptyNote('No report-by-report breakdown yet — only the overall status has been recorded.');
-  }
-  return section('Historical Data', inner);
+
+  const catById = {};
+  (DATA.histCatalog || []).forEach(c => { catById[c.id] = c; });
+
+  const reports = {};
+  (DATA.histStatus || [])
+    .filter(s => s.dsp_short_code === client.dsp_short_code)
+    .forEach(s => {
+      const c = catById[s.report_id];
+      if(!c) return;
+      (reports[s.report_id] = reports[s.report_id] || { cat: c, units: [] }).units.push(s);
+    });
+
+  const list = Object.values(reports);
+  list.forEach(r => r.units.sort((a, b) => a.unit_label.localeCompare(b.unit_label)));
+  list.sort((a, b) => a.cat.sort_order - b.cat.sort_order);
+
+  const all = list.reduce((n, r) => n + r.units.length, 0);
+  const got = list.reduce((n, r) => n + r.units.filter(u => u.status === 'Received').length, 0);
+  const pct = all ? got / all * 100 : 0;
+  const fill = got === all && all ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
+
+  const body = groupByCategory(list).map(([cat, reps]) =>
+    '<div class="hist-cat">' + esc(cat) + '</div>' +
+    reps.map(r => reportRow(r, false)).join('')
+  ).join('');
+
+  return section('Historical Data',
+    '<div class="detail-card">' +
+      '<div class="uzio-progress" style="margin-bottom:12px">' +
+      '<div class="uzio-progress__fill' + fill + '" style="width:' + pct + '%"></div></div>' +
+      body +
+    '</div>',
+    got + ' of ' + all + ' files · in scope since ' + sc.entered_on);
 }
 
 function clientAuditSection(client){
@@ -1048,94 +1130,190 @@ function clientOpenItemsSection(client){
 }
 
 /* ==================== HISTORICAL ==================== */
-const HIST_ORDER = ['Payroll History','Time Off','Timecards','Audit Trail','I-9'];
-function histClass(s){
-  const t = (s || '').toLowerCase();
-  if(t.indexOf('complete') === 0 || t === 'present' || /^\d+\s*\/\s*\d+$/.test(t.trim()) && t.split('/')[0].trim() === t.split('/')[1].trim()) return 'success';
-  if(t.indexOf('not started') !== -1 || t === 'missing' || t.indexOf('0/') === 0) return 'error';
-  if(t.indexOf('nearly') !== -1 || t.indexOf('partial') !== -1 || t.indexOf('minimal') !== -1 || t.indexOf('missing') !== -1) return 'warning';
-  return 'neutral';
-}
-// Collapse the seven source statuses into the three buckets people actually
-// filter by. 'Other' covers "Too new" and "Not deep-audited".
-function histBucket(s){
-  if(s === 'Complete') return 'Complete';
-  if(['Nearly complete','Partial','Minimal'].indexOf(s) !== -1) return 'Partial';
-  if(s === 'Not started') return 'Not started';
-  return 'Other';
-}
 const HIST_FILTERS = {
   search: { id: 'histSearch', placeholder: 'Search client…' },
   groups: [
-    { id: 'histStatus', options: [
-      { val: 'all', label: 'Any status' },
-      { val: 'Complete', label: 'Complete', dot: DOT.good },
-      { val: 'Partial', label: 'Partial', dot: DOT.warn },
-      { val: 'Not started', label: 'Not started', dot: DOT.bad },
-      { val: 'Other', label: 'Other' }
+    { id: 'histState', options: [
+      { val: 'all', label: 'Any state' },
+      { val: 'complete', label: 'Complete', dot: DOT.good },
+      { val: 'partial', label: 'In progress', dot: DOT.warn },
+      { val: 'none', label: 'Nothing yet', dot: DOT.bad }
     ]},
     { id: 'histVendor', options: [
-      { val: 'all', label: 'Any vendor' },
+      { val: 'all', label: 'Any source' },
       { val: 'ADP', label: 'ADP', dot: DOT.info },
       { val: 'Paycom', label: 'Paycom', dot: DOT.orange }
     ]}
   ],
+  toggles: [{ id: 'histPendingOnly', label: 'Only reports still pending' }],
   countId: 'histCount'
 };
-function renderHistorical(rows){
+
+/* Group reports under their category heading.
+
+   Sorting by sort_order alone is not enough: Garnishment is category 'Payroll'
+   but sits last in the catalogue, which printed the "Payroll" heading twice.
+   Categories keep the order of their first appearance; reports keep theirs. */
+function groupByCategory(reports){
+  const order = [], byCat = {};
+  reports.slice().sort((a, b) => a.cat.sort_order - b.cat.sort_order).forEach(r => {
+    if(!byCat[r.cat.category]){ byCat[r.cat.category] = []; order.push(r.cat.category); }
+    byCat[r.cat.category].push(r);
+  });
+  return order.map(c => [c, byCat[c]]);
+}
+
+function reportRow(r, withPendingAttr){
+  const pending = r.units.some(u => u.status !== 'Received');
+  return '<div class="hist-row"' + (withPendingAttr ? ' data-pending="' + (pending ? '1' : '0') + '"' : '') + '>' +
+    '<div class="hist-row__name">' + esc(r.cat.report_name) +
+      (r.cat.in_reference_doc ? '' :
+        '<span class="doc-flag" title="Tracked here but not yet listed in the reference document">not in doc</span>') +
+      (r.cat.year_range ? '<div class="hist-row__range">' + esc(r.cat.year_range) + '</div>' : '') +
+    '</div>' +
+    '<div class="hist-row__units">' + r.units.map(unitPill).join('') + '</div>' +
+  '</div>';
+}
+
+function unitPill(u){
+  const cls = u.status === 'Received' ? 'yes' : (u.status === 'Not applicable' ? 'na' : 'no');
+  const mark = u.status === 'Received' ? '✓' : (u.status === 'Not applicable' ? '–' : '✗');
+  const label = u.unit_label === 'Report' ? mark : u.unit_label + ' ' + mark;
+  const title = [
+    u.status,
+    u.file_name ? 'file: ' + u.file_name : null,
+    u.checked_date ? 'checked ' + u.checked_date : null,
+    u.notes || null,
+    u.folder_url ? 'click to open the Drive folder' : null
+  ].filter(Boolean).join(' · ');
+
+  // A received report links to the folder its file sits in, so the number can
+  // be checked against the actual Drive contents rather than taken on trust.
+  if(u.folder_url && u.status === 'Received'){
+    return '<a class="unit-pill unit-pill--' + cls + ' unit-pill--link" target="_blank" rel="noopener"' +
+      ' href="' + esc(u.folder_url) + '" title="' + esc(title) + '">' + esc(label) + '</a>';
+  }
+  return '<span class="unit-pill unit-pill--' + cls + '" title="' + esc(title) + '">' +
+    esc(label) + '</span>';
+}
+
+function renderHistorical(){
   const el = panel('historical-content');
-  const overall = rows.filter(r => r.report_category === 'Overall');
-  const detail = rows.filter(r => r.report_category !== 'Overall');
+  const scope = DATA.histScope || [];
+  const catalog = DATA.histCatalog || [];
+  const status = DATA.histStatus || [];
 
-  const summary = overall.map(r =>
-    '<tr data-name="' + esc((r.client_name || '').toLowerCase()) + '"' +
-    ' data-bucket="' + esc(histBucket(r.status)) + '"' +
-    ' data-vendor="' + esc(r.vendor || 'none') + '">' +
-    '<td class="name-cell"><b>' + esc(r.client_name) + '</b></td>' +
-    '<td>' + (r.vendor ? esc(r.vendor) : NIL) + '</td>' +
-    '<td><span class="uzio-status uzio-status--' + histClass(r.status) + '">' + esc(r.status) + '</span></td>' +
-    '<td style="color:var(--uzio-color-text-muted);font-size:12.5px">' + esc(r.notes || '') + '</td></tr>'
-  ).join('');
-
-  let detailHtml = '';
-  const clients = [];
-  detail.forEach(r => { if(clients.indexOf(r.client_name) === -1) clients.push(r.client_name); });
-  if(clients.length){
-    const map = {};
-    detail.forEach(r => { map[r.client_name + '||' + r.report_category] = r; });
-    const head = '<tr><th>Report</th>' + clients.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr>';
-    const body = HIST_ORDER.map(cat =>
-      '<tr><td style="font-weight:700;font-size:12.5px">' + esc(cat) + '</td>' + clients.map(c => {
-        const r = map[c + '||' + cat];
-        if(!r) return '<td>' + NIL + '</td>';
-        return '<td><span class="uzio-status uzio-status--' + histClass(r.status) + '">' + esc(r.status) + '</span>' +
-          (r.notes ? '<div class="sub">' + esc(r.notes) + '</div>' : '') + '</td>';
-      }).join('') + '</tr>'
-    ).join('');
-    detailHtml = '<div class="section-block"><h2>Per-report breakdown</h2>' +
-      '<div class="table-shell table-shell--short"><table class="uzio-table">' +
-      '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
-      '<p style="font-size:11.5px;color:var(--uzio-color-text-faint);margin:8px 0 0">' +
-      'Only clients whose folders have been walked report-by-report appear here. ' +
-      'Current-year payroll history sits in each client’s “Payroll Setup” folder as quarterly cuts, not in Historical Data.</p></div>';
+  if(!scope.length){
+    el.innerHTML = emptyNote('No DSP is currently in the historical-data window.');
+    return;
   }
 
-  el.innerHTML =
-    '<div class="section-block"><h2>Collection status by client</h2>' +
-    buildFilters(HIST_FILTERS) +
-    '<div class="table-shell table-shell--short"><table class="uzio-table" id="histTable">' +
-    '<thead><tr><th>Client</th><th>Vendor</th><th>Status</th><th>Detail</th></tr></thead>' +
-    '<tbody>' + summary + '</tbody></table></div></div>' + detailHtml;
+  const catById = {};
+  catalog.forEach(c => { catById[c.id] = c; });
 
-  const records = Array.from(el.querySelectorAll('#histTable tbody tr')).map(tr => ({
-    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket, vendor: tr.dataset.vendor
+  // status rows -> per client, per report, ordered by the catalogue's own order
+  const byClient = {};
+  status.forEach(s => {
+    const c = catById[s.report_id];
+    if(!c) return;
+    const client = (byClient[s.dsp_short_code] = byClient[s.dsp_short_code] || {});
+    const rep = (client[s.report_id] = client[s.report_id] || { cat: c, units: [] });
+    rep.units.push(s);
+  });
+
+  const cards = scope.map(sc => {
+    const name = (sc.client_overview && sc.client_overview.dsp_name) || sc.dsp_short_code;
+    const reports = Object.values(byClient[sc.dsp_short_code] || {});
+    reports.forEach(r => r.units.sort((a, b) => a.unit_label.localeCompare(b.unit_label)));
+    reports.sort((a, b) => a.cat.sort_order - b.cat.sort_order);
+
+    const all = reports.reduce((n, r) => n + r.units.length, 0);
+    const got = reports.reduce((n, r) => n + r.units.filter(u => u.status === 'Received').length, 0);
+    const pct = all ? got / all * 100 : 0;
+    const state = got === all && all ? 'complete' : (got ? 'partial' : 'none');
+    const fill = state === 'complete' ? '' :
+      (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
+    const badge = state === 'complete' ? 'success' : (pct >= 50 ? 'warning' : 'error');
+
+    const body = groupByCategory(reports).map(([cat, reps]) =>
+      '<div class="hist-cat">' + esc(cat) + '</div>' +
+      reps.map(r => reportRow(r, true)).join('')
+    ).join('');
+
+    // A div with a button role rather than a real <button>: the progress bar
+    // needs block-level children, which a button's content model does not allow
+    // — as a <span> it stayed inline and its height was ignored, so the bar
+    // never drew at all.
+    return '<div class="hist-client" data-name="' + esc(name.toLowerCase()) + '"' +
+      ' data-vendor="' + esc(sc.vendor) + '" data-state="' + state + '">' +
+      '<div class="hist-head" role="button" tabindex="0" aria-expanded="false">' +
+        '<span class="hist-head__caret">▶</span>' +
+        '<span class="hist-head__name" title="' + esc(name) + '">' + esc(name) + '</span>' +
+        '<span class="uzio-chip">' + esc(sc.vendor) + '</span>' +
+        '<span class="hist-head__meta">in scope since ' + esc(sc.entered_on) +
+          (sc.folder_url
+            ? ' &middot; <a class="hist-head__drive" target="_blank" rel="noopener"' +
+              ' href="' + esc(sc.folder_url) + '">Drive</a>'
+            : '') + '</span>' +
+        '<div class="uzio-progress hist-head__bar">' +
+          '<div class="uzio-progress__fill' + fill + '" style="width:' + pct + '%"></div>' +
+        '</div>' +
+        '<span class="uzio-status uzio-status--' + badge + '">' + got + ' / ' + all + ' files</span>' +
+      '</div>' +
+      '<div class="hist-body">' + body + '</div>' +
+    '</div>';
+  }).join('');
+
+  const totalFiles = status.length;
+  const gotFiles = status.filter(s => s.status === 'Received').length;
+
+  el.innerHTML =
+    buildFilters(HIST_FILTERS) +
+    '<p style="font-size:12px;color:var(--uzio-color-text-muted);margin:0 0 12px">' +
+    gotFiles + ' of ' + totalFiles + ' expected files received across ' + scope.length + ' clients. ' +
+    'Payroll History is counted per year and Audit Trail per quarter.</p>' +
+    cards;
+
+  // accordion — the header is a div playing the part of a button, so Enter and
+  // Space have to be handled here; a real button would do it for free.
+  const toggle = (h) => {
+    const open = h.closest('.hist-client').classList.toggle('is-open');
+    h.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  el.querySelectorAll('.hist-head').forEach(h => {
+    h.addEventListener('click', e => {
+      // The Drive link lives inside the toggle — following it should not also
+      // expand the card underneath.
+      if(e.target.closest('a')) return;
+      toggle(h);
+    });
+    h.addEventListener('keydown', e => {
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(h); }
+    });
+  });
+
+  const records = Array.from(el.querySelectorAll('.hist-client')).map(c => ({
+    el: c, name: c.dataset.name, vendor: c.dataset.vendor, state: c.dataset.state
   }));
   wireFilters(el, HIST_FILTERS, records, (r, s) =>
     (!s.q || r.name.indexOf(s.q) !== -1) &&
-    (s.histStatus === 'all' || r.bucket === s.histStatus) &&
+    (s.histState === 'all' || r.state === s.histState) &&
     (s.histVendor === 'all' || r.vendor === s.histVendor),
     (n, total) => n + ' of ' + total + ' clients'
   );
+
+  // The pending-only toggle hides satisfied report rows inside every card, and
+  // opens the cards so the remaining work is visible without extra clicks.
+  el.querySelector('#histPendingOnly').addEventListener('change', e => {
+    const on = e.target.checked;
+    el.querySelectorAll('.hist-row').forEach(row => {
+      row.style.display = (on && row.dataset.pending === '0') ? 'none' : '';
+    });
+    el.querySelectorAll('.hist-client').forEach(c => {
+      c.classList.toggle('is-open', on);
+      c.querySelector('.hist-head').setAttribute('aria-expanded', on ? 'true' : 'false');
+    });
+  });
 }
 
 /* ==================== AUDIT ==================== */
@@ -1199,9 +1377,6 @@ function renderAudit(rows){
   }).join('');
 
   el.innerHTML =
-    '<div class="uzio-callout"><h6 class="uzio-callout__title">' +
-    '<span class="uzio-icon uzio-icon--alert-bulb uzio-icon--sm"></span>Census is the recurring gap</h6>' +
-    '<p>Where an audit is missing it is most often Census. One case looks like a false negative rather than a real gap &mdash; see the note on InnovDel below.</p></div>' +
     buildFilters(AUDIT_FILTERS) +
     '<div class="audit-grid">' + cards + '</div>';
 
@@ -1241,11 +1416,7 @@ const DOC_FILTERS = {
 };
 function renderDocuments(rows){
   const el = panel('documents-content');
-  const sum = (f) => rows.reduce((a, r) => a + (r[f] || 0), 0);
-  const failed = sum('failed_docs');
   const byStatus = (s) => rows.filter(r => r.status === s).length;
-  const filenameFails = sum('fail_filename_format');
-  const pctFilename = failed ? Math.round(filenameFails / failed * 100) : 0;
 
   const order = ['Blocked', 'In progress', 'Completed with issues', 'Complete', 'Nothing to transfer'];
   const sorted = rows.slice().sort((a, b) => {
@@ -1278,13 +1449,6 @@ function renderDocuments(rows){
   }).join('');
 
   el.innerHTML =
-    '<div class="uzio-callout"><h6 class="uzio-callout__title">' +
-    '<span class="uzio-icon uzio-icon--alert-bulb uzio-icon--sm"></span>Most failures aren’t real failures</h6>' +
-    '<p>' + pctFilename + '% of all failed documents (' + filenameFails.toLocaleString() + ' of ' + failed.toLocaleString() + ') ' +
-    'come from one cause: the filename has no employee ID in the expected <code>prefix_employeeExtId_documentName</code> form. ' +
-    'In every mail that broke these down, they turned out to be company-level documents (handbooks, privacy notices, generic I-9 packets) ' +
-    'that were never meant to attach to an employee. The genuinely actionable failures are the smaller “employee not found” and ' +
-    '“unsupported file type” buckets.</p></div>' +
     buildFilters(DOC_FILTERS) +
     '<div class="table-shell"><table class="uzio-table" id="docTable">' +
     '<thead><tr><th>Client</th><th>Status</th><th>Date</th><th>Total docs</th><th>Failed</th>' +
@@ -1313,76 +1477,191 @@ const MODULES = [
   ['EmployeeDeductions','Deductions'], ['WorkerCompensation',"Worker's Comp"],
   ['EmployeeContributions','Contributions']
 ];
-function slug(n){ return (n || '').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
-// This view filters COLUMNS, not rows, so it builds the bar with the shared
-// helper but wires the behaviour itself.
-const API_FILTERS = {
-  search: { id: 'clientSearch', placeholder: 'Search client…' },
-  groups: [
-    { id: 'vendorFilter', options: [
-      { val: 'all', label: 'All vendors' },
-      { val: 'ADP', label: 'ADP', dot: DOT.info },
-      { val: 'Paycom', label: 'Paycom', dot: DOT.orange }
-    ]}
-  ],
-  toggles: [{ id: 'gapsOnly', label: 'Only clients with a gap' }],
-  countId: 'matrixCount'
-};
-function renderApi(rows){
-  const el = panel('api-content');
-  const clients = {};
-  rows.forEach(r => { if(!clients[r.fein]) clients[r.fein] = { name: r.client_name, vendor: r.vendor, fein: r.fein }; });
-  const list = Object.values(clients).sort((a,b) => a.name.localeCompare(b.name));
-  const byKey = {};
-  rows.forEach(r => { byKey[r.fein + '||' + r.module_key] = r; });
+/* Columns come from the tracker, not from the run log.
 
+   Building them from api_activity_runs (as this view used to) meant a DSP with
+   no runs yet had no column at all — so the most urgent case, "goes live soon
+   and nothing has been run", was the one thing the page could never show.
+
+   DSPs new to the platform are excluded: they are not migrating from ADP or
+   Paycom, so this matrix is not their workflow. */
+const API_GOLIVE_DAYS = 30;   // default window
+
+function apiClients(){
+  const runsByFein = {};
+  (DATA.api || []).forEach(r => {
+    (runsByFein[r.fein] = runsByFein[r.fein] || {})[r.module_key] = r;
+  });
+  return (DATA.clients || [])
+    .filter(c => c.previous_system === 'ADP' || c.previous_system === 'Paycom')
+    .map(c => {
+      const runs = runsByFein[c.fein] || {};
+      const done = MODULES.filter(m => runs[m[0]]).length;
+      const dates = MODULES.map(m => runs[m[0]] && runs[m[0]].last_run_date).filter(Boolean);
+      const people = [...new Set(MODULES
+        .map(m => runs[m[0]] && runs[m[0]].run_by).filter(Boolean)
+        .map(p => p.split('.')[0]))];
+      return {
+        code: c.dsp_short_code,
+        name: c.dsp_name,
+        vendor: c.previous_system,
+        // Two deadlines, and they are not the same day: payroll goes live about
+        // a fortnight after time tracking, so which one you are working back
+        // from changes who is urgent.
+        live: c.actual_tt_live_date || '',
+        payLive: c.payroll_live_date || '',
+        runs, done,
+        total: MODULES.length,
+        lastRun: dates.length ? dates.sort().slice(-1)[0] : '',
+        people,
+        progress: done === 0 ? 'none' : (done === MODULES.length ? 'done' : 'partial')
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function daysFromToday(n){
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return isoLocal(d);
+}
+
+function renderApi(){
+  const el = panel('api-content');
+  const list = apiClients();
+  if(!list.length){
+    el.innerHTML = emptyNote('No ADP or Paycom DSPs in the tracker yet.');
+    return { clientCount: 0 };
+  }
+
+  const today = isoLocal(new Date());
+  const logCurrentTo = (DATA.api || []).reduce((m, r) => r.last_run_date > m ? r.last_run_date : m, '');
 
   const th = list.map(c =>
-    '<th data-client="' + slug(c.name) + '" data-vendor="' + esc(c.vendor || '') + '" data-name="' + esc(c.name.toLowerCase()) + '">' +
-    esc(c.name) + '<div class="sub">' + esc(c.vendor || '—') + '</div></th>'
+    '<th data-code="' + esc(c.code) + '" data-name="' + esc(c.name.toLowerCase()) + '">' +
+    esc(c.name) + '<div class="sub">' + esc(c.vendor) +
+    (c.live ? ' &middot; TT ' + esc(c.live.slice(5).replace('-', '/')) : '') +
+    (c.payLive ? ' &middot; pay ' + esc(c.payLive.slice(5).replace('-', '/')) : '') + '</div></th>'
   ).join('');
 
   const body = MODULES.map(m =>
     '<tr><td class="sticky-col">' + esc(m[1]) + '</td>' + list.map(c => {
-      const r = byKey[c.fein + '||' + m[0]];
-      const cs = slug(c.name);
-      if(r) return '<td class="mcell" data-client="' + cs + '" data-hit="1">' +
+      const r = c.runs[m[0]];
+      if(r) return '<td class="mcell" data-code="' + esc(c.code) + '">' +
         '<span class="uzio-status uzio-status--success">&#10003;</span>' +
-        '<div class="sub">' + (r.last_run_date ? r.last_run_date.slice(5).replace('-','/') : '') + ' &middot; ' + esc((r.run_by || '').split('.')[0]) + '</div></td>';
-      return '<td class="mcell" data-client="' + cs + '" data-hit="0"><span class="uzio-status uzio-status--error">&#10007;</span></td>';
+        '<div class="sub">' + (r.last_run_date ? r.last_run_date.slice(5).replace('-', '/') : '') +
+        ' &middot; ' + esc((r.run_by || '').split('.')[0]) + '</div></td>';
+      return '<td class="mcell" data-code="' + esc(c.code) + '">' +
+        '<span class="uzio-status uzio-status--error">&#10007;</span></td>';
     }).join('') + '</tr>'
   ).join('');
 
-  el.innerHTML = buildFilters(API_FILTERS) +
+  const people = [...new Set(list.flatMap(c => c.people))].sort();
+
+  el.innerHTML =
+    '<div class="filter-bar">' +
+      '<div class="uzio-search"><span class="uzio-search__icon">&#8981;</span>' +
+        '<input class="uzio-search__input" id="apiSearch" placeholder="Search client…" aria-label="Search clients"></div>' +
+      '<div class="chip-group" id="apiSource">' +
+        '<button class="uzio-filter-chip" data-val="all">Any source</button>' +
+        '<button class="uzio-filter-chip" data-val="ADP"><span class="uzio-filter-chip__dot" style="background:' + DOT.info + '"></span>ADP</button>' +
+        '<button class="uzio-filter-chip" data-val="Paycom"><span class="uzio-filter-chip__dot" style="background:' + DOT.orange + '"></span>Paycom</button>' +
+      '</div>' +
+      '<div class="chip-group" id="apiProgress">' +
+        '<button class="uzio-filter-chip" data-val="all">Any progress</button>' +
+        '<button class="uzio-filter-chip" data-val="none"><span class="uzio-filter-chip__dot" style="background:' + DOT.bad + '"></span>Not started</button>' +
+        '<button class="uzio-filter-chip" data-val="partial"><span class="uzio-filter-chip__dot" style="background:' + DOT.warn + '"></span>In progress</button>' +
+        '<button class="uzio-filter-chip" data-val="done"><span class="uzio-filter-chip__dot" style="background:' + DOT.good + '"></span>All run</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="filter-bar">' +
+      '<div class="date-filter">' +
+        '<select id="apiDateField" aria-label="Which go-live date to filter on">' +
+          '<option value="either">TT or Payroll live</option>' +
+          '<option value="live">TT live only</option>' +
+          '<option value="payLive">Payroll live only</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="chip-group" id="apiGoLive">' +
+        '<button class="uzio-filter-chip" data-val="30">&le; 30 days</button>' +
+        '<button class="uzio-filter-chip" data-val="15">&le; 15 days</button>' +
+        '<button class="uzio-filter-chip" data-val="any">Any time</button>' +
+      '</div>' +
+      '<div class="date-filter">' +
+        '<select id="apiRanBy" aria-label="Filter by who ran the modules">' +
+          '<option value="all">Anyone</option>' +
+          people.map(p => '<option value="' + esc(p) + '">' + esc(p) + '</option>').join('') +
+        '</select>' +
+        '<select id="apiRecency" aria-label="Filter by when a module last ran">' +
+          '<option value="any">Ran any time</option>' +
+          '<option value="7">Ran in last 7 days</option>' +
+          '<option value="30">Ran in last 30 days</option>' +
+        '</select>' +
+      '</div>' +
+      '<span class="result-count" id="apiCount"></span>' +
+    '</div>' +
     '<div class="table-shell"><table class="uzio-table matrix-table" id="matrixTable">' +
-      '<thead><tr><th class="sticky-col">Module</th>' + th + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      '<thead><tr><th class="sticky-col">Module</th>' + th + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+    '<p style="font-size:11.5px;color:var(--uzio-color-text-faint);margin:8px 0 0">' +
+      'Run log is a manual export, current to <b>' + esc(logCurrentTo || 'unknown') + '</b> — a cross can mean ' +
+      '“not run” or “run after that date and not exported yet”. DSPs new to the platform are not shown.</p>';
 
   const table = el.querySelector('#matrixTable');
-  const ths = Array.from(table.querySelectorAll('thead th[data-client]'));
-  const search = el.querySelector('#clientSearch');
-  const gapsOnly = el.querySelector('#gapsOnly');
-  const countEl = el.querySelector('#matrixCount');
-  let vendor = 'all';
+  const ths = Array.from(table.querySelectorAll('thead th[data-code]'));
+  const byCode = {};
+  list.forEach(c => { byCode[c.code] = c; });
+
+  const state = { q: '', source: 'all', progress: 'all', goLive: String(API_GOLIVE_DAYS),
+                  dateField: 'either', ranBy: 'all', recency: 'any' };
+
+  function matches(c){
+    if(state.q && c.name.toLowerCase().indexOf(state.q) === -1 &&
+       c.code.toLowerCase().indexOf(state.q) === -1) return false;
+    if(state.source !== 'all' && c.vendor !== state.source) return false;
+    if(state.progress !== 'all' && c.progress !== state.progress) return false;
+    if(state.goLive !== 'any'){
+      // Upcoming go-lives only. A DSP with no date on the selected field cannot
+      // be placed in the window, so it drops out rather than being assumed soon.
+      const until = daysFromToday(Number(state.goLive));
+      const fields = state.dateField === 'either' ? ['live', 'payLive'] : [state.dateField];
+      const hit = fields.some(f => c[f] && c[f] >= today && c[f] <= until);
+      if(!hit) return false;
+    }
+    if(state.ranBy !== 'all' && c.people.indexOf(state.ranBy) === -1) return false;
+    if(state.recency !== 'any'){
+      if(!c.lastRun) return false;
+      if(c.lastRun < daysFromToday(-Number(state.recency))) return false;
+    }
+    return true;
+  }
 
   function apply(){
-    const q = (search.value || '').toLowerCase().trim();
-    let shown = 0;
+    const shown = [];
     ths.forEach(th => {
-      const cs = th.dataset.client;
-      let ok = true;
-      if(q && th.dataset.name.indexOf(q) === -1) ok = false;
-      if(vendor !== 'all' && th.dataset.vendor !== vendor) ok = false;
-      if(gapsOnly.checked && !table.querySelector('td[data-client="' + cs + '"][data-hit="0"]')) ok = false;
-      table.querySelectorAll('[data-client="' + cs + '"]').forEach(c => c.classList.toggle('is-hidden', !ok));
-      if(ok) shown++;
+      const c = byCode[th.dataset.code];
+      const ok = matches(c);
+      if(ok) shown.push(c);
+      table.querySelectorAll('[data-code="' + c.code + '"]').forEach(x => x.classList.toggle('is-hidden', !ok));
     });
-    countEl.textContent = shown + ' of ' + ths.length + ' clients';
+    el.querySelector('#apiCount').textContent = shown.length + ' of ' + list.length + ' DSPs';
+
   }
-  search.addEventListener('input', apply);
-  gapsOnly.addEventListener('change', apply);
-  wireChips(el.querySelector('#vendorFilter'), v => { vendor = v; apply(); });
+
+  el.querySelector('#apiSearch').addEventListener('input', e => {
+    state.q = (e.target.value || '').toLowerCase().trim(); apply();
+  });
+  wireChips(el.querySelector('#apiSource'), v => { state.source = v; apply(); });
+  wireChips(el.querySelector('#apiProgress'), v => { state.progress = v; apply(); });
+  wireChips(el.querySelector('#apiGoLive'), v => { state.goLive = v; apply(); });
+  el.querySelector('#apiDateField').addEventListener('change', e => {
+    state.dateField = e.target.value; apply();
+  });
+  el.querySelector('#apiRanBy').addEventListener('change', e => { state.ranBy = e.target.value; apply(); });
+  el.querySelector('#apiRecency').addEventListener('change', e => { state.recency = e.target.value; apply(); });
+
+
   apply();
-  return { clientCount: list.length };
+  return { tracked: list.length, started: list.filter(c => c.done > 0).length };
 }
 
 /* ==================== OPEN ITEMS ==================== */
@@ -1442,33 +1721,177 @@ function renderOpen(rows){
   syncBlocks();
 }
 
+/* ==================== DATA COVERAGE ====================
+   How many of a client's people actually have the data loaded, counted straight
+   from prod. This is the complement to API Activity: that view says an API
+   *ran*, this one says whether the run landed. A client can show a census run
+   months ago and still have zero payment methods.
+
+   Two denominators, switched by the first chip group, because they answer
+   different questions and neither can be derived from the other:
+     active — still employed. "Can we run payroll for this client?"
+     all    — every non-deleted employee, leavers included. Migration completeness.
+   The gap between them is large enough to invert the story: Wheels for Work
+   reads 2396 of 2396 on payment method against all, but 172 of 172 against
+   active, and TRUDELO reads 11% against all versus 100% against active. */
+let COV_MODE = 'active';
+let COV_QUERY = '';
+
+const COV_FILTERS = {
+  search: { id: 'covSearch', placeholder: 'Search client' },
+  groups: [
+    { id: 'covGap', options: [
+      { val: 'all', label: 'All' },
+      { val: 'gap', label: 'Missing some', dot: DOT.warn },
+      { val: 'zero', label: 'Nothing loaded', dot: DOT.bad }
+    ]}
+  ],
+  countId: 'covCount'
+};
+
+function covPct(n, d){ return d ? Math.round(n / d * 100) : 0; }
+
+/* n of d, with the same fill thresholds the historical view uses so a red bar
+   means the same thing everywhere. */
+function covCell(n, d){
+  if(!d) return '<td>' + NIL + '</td>';
+  const pct = covPct(n, d);
+  const fill = pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
+  return '<td style="min-width:132px">' +
+    '<div class="tnum" style="font-size:12px;margin-bottom:4px">' +
+      Number(n).toLocaleString() + ' <span style="color:var(--uzio-color-text-muted)">of ' +
+      Number(d).toLocaleString() + '</span> &middot; ' + pct + '%</div>' +
+    '<div class="uzio-progress"><div class="uzio-progress__fill' + fill +
+      '" style="width:' + pct + '%"></div></div></td>';
+}
+
+function renderCoverage(){
+  const el = panel('coverage-content');
+  const rows = DATA.coverage || [];
+  const active = COV_MODE === 'active';
+  const den = r => active ? r.active_employees : r.total_employees;
+  const pay = r => active ? r.active_with_payment_method : r.total_with_payment_method;
+  const emg = r => active ? r.active_with_emergency_contact : r.total_with_emergency_contact;
+
+  const sorted = rows.slice().sort((a, b) => {
+    // Worst coverage first — this view exists to surface gaps, so a client with
+    // nothing loaded must not be buried under the clients that are already done.
+    const wa = covPct(pay(a), den(a)) + covPct(emg(a), den(a));
+    const wb = covPct(pay(b), den(b)) + covPct(emg(b), den(b));
+    return wa !== wb ? wa - wb : (den(b) || 0) - (den(a) || 0);
+  });
+
+  const tot = rows.reduce((s, r) => s + (den(r) || 0), 0);
+  const totPay = rows.reduce((s, r) => s + (pay(r) || 0), 0);
+  const totEmg = rows.reduce((s, r) => s + (emg(r) || 0), 0);
+
+  const modeChips =
+    '<div class="filter-bar" style="margin-bottom:0;border-bottom:0;padding-bottom:0">' +
+    '<div class="chip-group" id="covMode">' +
+      '<button class="uzio-filter-chip' + (active ? ' is-active' : '') +
+        '" data-val="active">Active employees</button>' +
+      '<button class="uzio-filter-chip' + (active ? '' : ' is-active') +
+        '" data-val="total">All (incl. leavers)</button>' +
+    '</div>' +
+    '<span class="result-count">' + rows.length + ' DSPs &middot; ' +
+      tot.toLocaleString() + ' employees &middot; payment ' + covPct(totPay, tot) + '% &middot; ' +
+      'emergency ' + covPct(totEmg, tot) + '%</span></div>';
+
+  const body = sorted.map(r => {
+    const d = den(r) || 0, p = pay(r) || 0, e = emg(r) || 0;
+    let bucket = 'ok';
+    if(d > 0 && (p === 0 || e === 0)) bucket = 'zero';
+    else if(d > 0 && (p < d || e < d)) bucket = 'gap';
+    return '<tr data-name="' + esc((r.company_name || '').toLowerCase()) + '" data-bucket="' + bucket + '">' +
+      '<td class="name-cell"><b title="' + esc(r.company_name) + '">' + esc(r.company_name) + '</b>' +
+        '<div class="sub">' + esc(r.dsp_short_code || '') + '</div></td>' +
+      '<td>' + num(d) + '</td>' +
+      covCell(p, d) +
+      covCell(e, d) +
+      '<td class="sub">' + fmtDate(r.checked_date) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = modeChips + buildFilters(COV_FILTERS) +
+    '<div class="table-shell"><table class="uzio-table" id="covTable">' +
+    '<thead><tr><th>Client</th><th>' + (active ? 'Active' : 'All') + ' employees</th>' +
+    '<th>Payment method</th><th>Emergency contact</th><th>Checked</th></tr></thead>' +
+    '<tbody>' + body + '</tbody></table></div>';
+
+  // The mode chips sit outside wireFilters because switching denominator is a
+  // re-render, not a filter — the numbers themselves change, not just which
+  // rows survive.
+  el.querySelectorAll('#covMode .uzio-filter-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(btn.dataset.val === COV_MODE) return;
+      COV_MODE = btn.dataset.val;
+      renderCoverage();
+    });
+  });
+
+  const records = Array.from(el.querySelectorAll('#covTable tbody tr')).map(tr => ({
+    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket
+  }));
+  wireFilters(el, COV_FILTERS, records, (r, s) =>
+    (!s.q || r.name.indexOf(s.q) !== -1) &&
+    (s.covGap === 'all' || r.bucket === s.covGap ||
+      (s.covGap === 'gap' && r.bucket === 'zero')),
+    (n, total) => n + ' of ' + total + ' clients'
+  );
+
+  // Re-renders wipe the search box, so put the typed query back.
+  const box = el.querySelector('#covSearch');
+  if(box && COV_QUERY){ box.value = COV_QUERY; box.dispatchEvent(new Event('input')); }
+  if(box) box.addEventListener('input', () => { COV_QUERY = box.value; });
+
+  return { clients: rows.length, pay: covPct(totPay, tot), emg: covPct(totEmg, tot) };
+}
+
 /* ==================== INIT ==================== */
 async function loadAll(){
   const out = {};
   const fail = (id) => (e) => { panel(id).innerHTML = '<div class="err-box">' + esc(e.message) + '</div>'; };
 
+  // client_overview is fetched on its own first: API Activity now builds its
+  // columns from the tracker (so DSPs with no runs still appear), so it cannot
+  // start until this has landed. Running it inside the parallel block raced.
+  try {
+    DATA.clients = await sbGet(
+      'client_overview?select=*,client_work_locations(work_location_name,address_line1,' +
+      'address_line2,city,state,zip_code,is_primary)&order=dsp_name.asc');
+    out.overview = renderOverview(DATA.clients);
+  } catch(e){ fail('overview-content')(e); }
+
   await Promise.all([
-    // The detail sub-page shows full street addresses, so pull the address
-    // columns too — not just the city/state the old grid column needed.
-    sbGet('client_overview?select=*,client_work_locations(work_location_name,address_line1,address_line2,city,state,zip_code,is_primary)&order=dsp_name.asc')
-      .then(r => { out.overview = renderOverview(r); }).catch(fail('overview-content')),
-    sbGet('historical_data_checklist?select=*&order=client_name.asc')
-      .then(r => { DATA.historical = r; renderHistorical(r); }).catch(fail('historical-content')),
+    // Historical data is three tables now: who is tracked, the report
+    // catalogue, and one status row per expected file.
+    Promise.all([
+      sbGet('historical_scope?select=*,client_overview(dsp_name)&order=entered_on.desc'),
+      sbGet('historical_report_catalog?select=*&order=vendor.asc,sort_order.asc'),
+      sbGet('historical_report_status?select=*')
+    ]).then(([scope, catalog, status]) => {
+      DATA.histScope = scope; DATA.histCatalog = catalog; DATA.histStatus = status;
+      renderHistorical();
+    }).catch(fail('historical-content')),
     sbGet('audit_coverage?select=*&order=client_name.asc')
       .then(r => { DATA.audit = r; renderAudit(r); }).catch(fail('audit-content')),
     sbGet('document_transfer?select=*&order=client_name.asc')
       .then(r => { DATA.documents = r; out.docs = renderDocuments(r); }).catch(fail('documents-content')),
     sbGet('api_activity_runs?select=*&order=client_name.asc')
-      .then(r => { DATA.api = r; out.api = renderApi(r); }).catch(fail('api-content')),
+      .then(r => { DATA.api = r; out.api = renderApi(); }).catch(fail('api-content')),
+    sbGet('client_data_coverage?select=*&order=company_name.asc')
+      .then(r => { DATA.coverage = r; out.coverage = renderCoverage(); }).catch(fail('coverage-content')),
     sbGet('open_items?select=*&order=date_added.desc')
       .then(r => { DATA.open = r; renderOpen(r); }).catch(fail('open-content'))
   ]);
 
   const parts = [];
   if(out.overview) parts.push(out.overview.total + ' DSPs · ' + out.overview.withFein + ' matched to prod');
-  if(out.api) parts.push(out.api.clientCount + ' clients with API runs');
+  if(out.api) parts.push('API: ' + out.api.started + ' of ' + out.api.tracked + ' started');
   if(out.docs) parts.push('Docs: ' + out.docs.clients + ' clients · ' + out.docs.notDone + ' not done');
-  parts.push('Historical &amp; Audit: 14 clients');
+  if(out.coverage) parts.push('Coverage: payment ' + out.coverage.pay + '% · emergency ' + out.coverage.emg + '%');
+  if(DATA.histScope) parts.push('Historical: ' + DATA.histScope.length + ' DSPs in window');
+  parts.push('Audit: 14 clients');
   document.getElementById('sidebar-foot').innerHTML = parts.join('<br>');
 }
 

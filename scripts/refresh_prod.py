@@ -4,6 +4,8 @@ prod and needs no judgement. Safe to run unattended and safe to run repeatedly.
 What it does:
   1. backfill_fein          - match unmatched DSPs to prod employers by name
   2. populate_work_locations - refresh every matched DSP's work locations
+  3. populate_data_coverage  - count how many employees actually have a payment
+                               method / emergency contact yet
 
 What it deliberately does NOT touch:
   - open_items and historical_data_checklist  -> human-owned, no script writes
@@ -20,6 +22,7 @@ from contextlib import redirect_stdout
 STEPS = [
     ("backfill_fein", "Match unmatched DSPs to prod employers"),
     ("populate_work_locations", "Refresh work locations from prod"),
+    ("populate_data_coverage", "Refresh payment-method / emergency-contact coverage"),
 ]
 
 

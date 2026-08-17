@@ -170,7 +170,6 @@ tr.cov-none td:first-child{box-shadow:inset 3px 0 0 var(--uzio-color-error)}
 /* ---------- load history (expanded row) ---------- */
 tr.cov-row{cursor:pointer}
 tr.cov-row:hover{background:var(--uzio-color-bg-row-hover)}
-td.cov-tl{padding:18px 20px;background:var(--uzio-color-bg-subtle)}
 .cov-tl__head{font-size:12.5px;color:var(--uzio-color-text-body);line-height:1.7;margin-bottom:14px}
 .cov-tl__head b{color:var(--uzio-color-text-heading)}
 .cov-tl__chart{display:flex;align-items:flex-end;gap:4px;height:120px;overflow-x:auto;padding-bottom:2px}
@@ -936,9 +935,18 @@ function renderOverview(rows){
 function kv(label, value){
   return '<div class="kv"><dt>' + esc(label) + '</dt><dd>' + (value == null || value === '' ? NIL : value) + '</dd></div>';
 }
-function showClient(code){
+/* `origin` is the view to go back to. The client page is reachable from both
+   Overview and Data Coverage, and a breadcrumb that always said "Client
+   Overview" would send half the visitors somewhere they had not been. */
+let CLIENT_ORIGIN = 'overview';
+const ORIGIN_LABEL = { overview: 'Client Overview', coverage: 'Data Coverage' };
+
+function showClient(code, origin){
   const r = CLIENTS_BY_CODE[code];
   if(!r) return;
+  CLIENT_ORIGIN = origin || 'overview';
+  const crumb = document.querySelector('#client-back .uzio-breadcrumb__label');
+  if(crumb) crumb.textContent = ORIGIN_LABEL[CLIENT_ORIGIN] || 'Back';
 
   const locs = (r.client_work_locations || []).slice().sort((a, b) =>
     (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
@@ -990,6 +998,7 @@ function showClient(code){
           '<div class="detail-card"><div style="font-size:12.5px;color:var(--uzio-color-text-body);' +
           'line-height:1.6;white-space:pre-line">' + esc(r.source_row_notes) + '</div></div>')
       : '') +
+    clientCoverageSection(r) +
     clientApiSection(r) +
     clientHistoricalSection(r) +
     clientAuditSection(r) +
@@ -997,6 +1006,116 @@ function showClient(code){
     clientOpenItemsSection(r);
 
   showView('client', r.dsp_name);
+  loadClientTimeline(code);   // async: the section renders a placeholder first
+}
+
+/* Coverage + load history for one client, on its own page rather than expanded
+   under the grid row — three metric cells and a chart inside a table row buried
+   the numbers and pushed everything else down. Here the figures are written out
+   as plain rows and the chart has room to breathe. */
+function clientCoverageSection(client){
+  const c = (DATA.coverage || []).find(x => x.dsp_short_code === client.dsp_short_code);
+  // A client only gets a coverage row once prod holds employees for its FEIN --
+  // the count comes from a join on employee, so an employer with none produces
+  // no row at all. Saying "not counted yet" would blame the refresh for what is
+  // really an empty employer.
+  if(!c) return section('Data coverage',
+    '<div class="detail-card">' + emptyNote(
+      client.fein ? 'No employees in prod under this FEIN yet, so there is nothing to count.'
+                  : 'Not matched to a prod employer, so there is nothing to count.') + '</div>');
+
+  const pair = (label, have, den) => {
+    if(!den) return kv(label, null);
+    const pct = covPct(have, den), miss = den - have;
+    return kv(label, '<span class="tnum">' + have.toLocaleString() + ' of ' + den.toLocaleString() +
+      '</span> &middot; ' + pct + '%' +
+      (miss > 0 ? ' <span style="color:var(--uzio-color-text-muted)">(' +
+        miss.toLocaleString() + ' missing)</span>' : ''));
+  };
+
+  const a = c.active_employees || 0, t = c.total_employees || 0;
+  const cards =
+    '<div class="detail-card"><h3>Still on the books</h3>' +
+      kv('Active employees', '<span class="tnum">' + a.toLocaleString() + '</span>') +
+      pair('Payment method', c.active_with_payment_method || 0, a) +
+      pair('Emergency contact', c.active_with_emergency_contact || 0, a) +
+      pair('Driving licence', c.active_with_licence || 0, a) +
+    '</div>' +
+    '<div class="detail-card"><h3>Everyone ever loaded</h3>' +
+      kv('Total employees', '<span class="tnum">' + t.toLocaleString() + '</span>' +
+        (t > a ? ' <span style="color:var(--uzio-color-text-muted)">(' +
+          (t - a).toLocaleString() + ' terminated)</span>' : '')) +
+      pair('Payment method', c.total_with_payment_method || 0, t) +
+      pair('Emergency contact', c.total_with_emergency_contact || 0, t) +
+      pair('Driving licence', c.total_with_licence || 0, t) +
+    '</div>' +
+    '<div class="detail-card" id="cov-loadstats"><h3>Load history</h3>' +
+      emptyNote('Loading…') + '</div>';
+
+  return section('Data coverage',
+    '<div class="detail-grid">' + cards + '</div>' +
+    '<div class="detail-card"><h3>When employees arrived</h3>' +
+      '<div id="cov-loadchart">' + emptyNote('Loading…') + '</div></div>',
+    'counted from prod on ' + fmtDatePlain(c.checked_date));
+}
+
+/* The events are fetched per client rather than preloaded: PostgREST caps a
+   response at 1000 rows and there are ~3,500 events, so one up-front fetch
+   silently returned only the oldest third of them. */
+function loadClientTimeline(code){
+  const chart = document.getElementById('cov-loadchart');
+  const stats = document.getElementById('cov-loadstats');
+  if(!chart) return;
+  const draw = (evs) => {
+    if(!document.getElementById('cov-loadchart')) return;
+    chart.innerHTML = covTimeline(evs);
+    if(stats) stats.innerHTML = '<h3>Load history</h3>' + covLoadStats(evs, code);
+  };
+  if(DATA.loadEvents[code]) return draw(DATA.loadEvents[code]);
+  sbGet('client_load_events?select=*&dsp_short_code=eq.' + encodeURIComponent(code) +
+        '&order=event_date.asc')
+    .then(evs => { DATA.loadEvents[code] = evs; draw(evs); })
+    .catch(e => { chart.innerHTML = '<div class="err-box">' + esc(e.message) + '</div>'; });
+}
+
+/* The written-out version of what the bars show — the questions a single
+   last_run_date cannot answer: when the bulk actually landed, who put it there,
+   and how much arrived afterwards. */
+function covLoadStats(evs, code){
+  const added = evs.filter(e => e.kind === 'added')
+    .sort((a, b) => (a.event_date || '').localeCompare(b.event_date || ''));
+  if(!added.length) return emptyNote('No load history recorded for this client.');
+
+  const total = added.reduce((s, e) => s + (e.employees || 0), 0);
+  const biggest = added.reduce((m, e) => (!m || e.employees > m.employees) ? e : m, null);
+  let run = 0, half = null;
+  added.forEach(e => { run += e.employees || 0; if(!half && total && run >= total / 2) half = e; });
+  const byStaff = added.filter(e => e.actor_type === 'staff').reduce((s, e) => s + e.employees, 0);
+  const left = evs.filter(e => e.kind === 'terminated').reduce((s, e) => s + (e.employees || 0), 0);
+  const pct = (n) => covPct(n, total);   // shared so the no-false-100% rule applies here too
+
+  return kv('First load', fmtDate(added[0].event_date) + ' &middot; ' +
+      added[0].employees.toLocaleString() + ' by ' + esc(added[0].actor)) +
+    kv('Biggest load', fmtDate(biggest.event_date) + ' &middot; ' +
+      biggest.employees.toLocaleString() + ' (' + pct(biggest.employees) + '%) by ' + esc(biggest.actor)) +
+    kv('Half were in by', fmtDate(half ? half.event_date : null)) +
+    kv('Most recent', fmtDate(added[added.length - 1].event_date) + ' &middot; ' +
+      added[added.length - 1].employees.toLocaleString() + ' by ' + esc(added[added.length - 1].actor)) +
+    kv('Load events', added.length + ' on ' +
+      new Set(added.map(e => e.event_date)).size + ' days') +
+    kv('Added by Uzio staff', '<span class="tnum">' + byStaff.toLocaleString() + '</span> of ' +
+      total.toLocaleString() + ' (' + pct(byStaff) + '%)') +
+    // "1,000 total (791 terminated)" next to "0 left since first load" reads as
+    // a contradiction until you know the census imports the client's whole
+    // ADP/Paycom history — those 791 were already gone when they arrived.
+    kv('Left since first load', (function(){
+      const c = (DATA.coverage || []).find(x => x.dsp_short_code === code);
+      const gone = c ? (c.total_employees || 0) - (c.active_employees || 0) : 0;
+      const before = Math.max(0, gone - left);
+      return '<span class="tnum">' + left.toLocaleString() + '</span>' +
+        (before ? ' <span style="color:var(--uzio-color-text-muted)">(a further ' +
+          before.toLocaleString() + ' were already terminated when imported)</span>' : '');
+    })());
 }
 
 function emptyNote(msg){
@@ -1808,7 +1927,15 @@ const COV_METRICS = [
   { key: 'lic', label: 'Driving licence', have: 'with_licence' }
 ];
 
-function covPct(n, d){ return d ? Math.round(n / d * 100) : 0; }
+function covPct(n, d){
+  if(!d) return 0;
+  const p = Math.round(n / d * 100);
+  // Never let rounding claim a clean 100% while people are still missing
+  // (995 of 1,000 is 99.5%), nor show 0% when some are already in.
+  if(p === 100 && n < d) return 99;
+  if(p === 0 && n > 0) return 1;
+  return p;
+}
 
 function covFill(pct){
   return pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
@@ -1888,7 +2015,7 @@ function covTimeline(evs){
     '</div>';
   }).join('');
 
-  const pct = (n) => totalAdded ? Math.round(n / totalAdded * 100) : 0;
+  const pct = (n) => covPct(n, totalAdded);
   const head =
     (biggest ? 'Biggest load <b>' + fmtDate(biggest.event_date) + '</b> — ' +
       biggest.employees.toLocaleString() + ' employees (' + pct(biggest.employees) +
@@ -2051,45 +2178,16 @@ function renderCoverage(){
     else { COV.sortKey = k; COV.sortDir = k === 'name' ? 'asc' : 'asc'; }
   }));
 
-  /* ---- click a client to open its load history under the row ---- */
-  const tbody = el.querySelector('#covTable tbody');
-  tbody.addEventListener('click', e => {
+  /* ---- a client opens its own page, not an inline panel ---- */
+  el.querySelector('#covTable tbody').addEventListener('click', e => {
     const tr = e.target.closest('tr.cov-row');
-    if(!tr) return;
-    const open = tr.nextElementSibling;
-    if(open && open.classList.contains('cov-tl-row')){ open.remove(); return; }
-    // only one open at a time — two charts side by side invite comparing bars
-    // whose heights are scaled to different peaks, which would mislead.
-    Array.from(tbody.querySelectorAll('tr.cov-tl-row')).forEach(r => r.remove());
-    const code = tr.dataset.code;
-    const row = document.createElement('tr');
-    row.className = 'cov-tl-row';
-    row.innerHTML = '<td class="cov-tl" colspan="5"><div class="cov-tl__empty">Loading&hellip;</div></td>';
-    tr.insertAdjacentElement('afterend', row);
-
-    /* Fetched per client rather than preloaded: PostgREST caps a response at
-       1000 rows, and there are ~3,500 load events, so a single up-front fetch
-       silently returned only the oldest third — every client loaded after
-       April 2026 came back with an empty timeline. */
-    const draw = (evs) => {
-      if(!row.parentNode) return;                       // closed while loading
-      row.firstChild.innerHTML = covTimeline(evs);
-    };
-    if(DATA.loadEvents[code]) { draw(DATA.loadEvents[code]); return; }
-    sbGet('client_load_events?select=*&dsp_short_code=eq.' + encodeURIComponent(code) +
-          '&order=event_date.asc')
-      .then(evs => { DATA.loadEvents[code] = evs; draw(evs); })
-      .catch(e => { if(row.parentNode) row.firstChild.innerHTML =
-        '<div class="err-box">' + esc(e.message) + '</div>'; });
+    if(tr) showClient(tr.dataset.code, 'coverage');
   });
 
   /* ---- search filters in place so the box keeps focus ---- */
   const trs = Array.from(el.querySelectorAll('#covTable tbody tr.cov-row'));
   const countEl = el.querySelector('#covCount');
   function applyRows(){
-    // An open timeline belongs to a specific row; once filtering moves the
-    // rows around it would sit under whatever landed above it.
-    Array.from(el.querySelectorAll('tr.cov-tl-row')).forEach(r => r.remove());
     let shown = 0;
     trs.forEach(tr => {
       const ok =
@@ -2172,7 +2270,7 @@ async function loadAll(){
   window.showView = function(view, headerText){
     document.querySelectorAll('.app-view').forEach(v => v.classList.remove('is-active'));
     document.getElementById('view-' + view).classList.add('is-active');
-    const navFor = view === 'client' ? 'overview' : view;
+    const navFor = view === 'client' ? CLIENT_ORIGIN : view;
     items.forEach(i => i.classList.toggle('uzio-sidebar-x__item--active', i.dataset.view === navFor));
     const active = Array.from(items).find(i => i.dataset.view === navFor);
     title.textContent = headerText || (active ? active.dataset.title : '');
@@ -2180,7 +2278,7 @@ async function loadAll(){
   };
 
   items.forEach(el => el.addEventListener('click', () => showView(el.dataset.view)));
-  document.getElementById('client-back').addEventListener('click', () => showView('overview'));
+  document.getElementById('client-back').addEventListener('click', () => showView(CLIENT_ORIGIN));
 })();
 
 loadAll();

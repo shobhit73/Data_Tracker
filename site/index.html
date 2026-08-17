@@ -142,6 +142,32 @@ h1,h2,h3,h4{margin:0;color:var(--uzio-color-text-heading)}
 .pager__info{font-variant-numeric:tabular-nums}
 .pager__size{margin-left:auto;display:flex;align-items:center;gap:6px}
 
+/* ---------- data coverage ---------- */
+.cov-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px;margin-bottom:18px}
+.cov-metric{background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
+  border-radius:var(--uzio-radius-lg);padding:16px 18px;text-align:left;cursor:pointer;font:inherit;
+  transition:border-color var(--uzio-motion-base),box-shadow var(--uzio-motion-base)}
+.cov-metric:hover{border-color:var(--uzio-color-action)}
+.cov-metric.is-active{border-color:var(--uzio-color-action);
+  box-shadow:inset 0 0 0 1px var(--uzio-color-action)}
+.cov-metric__label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--uzio-color-text-muted);margin-bottom:9px}
+.cov-metric__pct{font-size:30px;font-weight:700;color:var(--uzio-color-text-heading);line-height:1;
+  margin-bottom:10px}
+.cov-metric__sub{font-size:11.5px;color:var(--uzio-color-text-muted);margin-top:9px;line-height:1.55}
+/* Chip rows get a leading label so it is obvious that each row is its own
+   question — an unlabelled run of chips reads as one long undifferentiated set. */
+.filter-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px}
+.filter-row__label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--uzio-color-text-muted)}
+.cov-cell{min-width:118px}
+.cov-cell__pct{font-size:14px;font-weight:600;color:var(--uzio-color-text-heading);margin-bottom:5px}
+.cov-cell__gap{font-size:11px;color:var(--uzio-color-text-muted);margin-top:5px}
+/* A client with nothing at all is a different problem from one that is merely
+   behind, so it gets an edge marker rather than just a shorter bar. */
+tr.cov-none td:first-child{box-shadow:inset 3px 0 0 var(--uzio-color-error)}
+.cov-foot{font-size:11.5px;color:var(--uzio-color-text-muted);margin-top:12px}
+
 /* ---------- sortable headers ---------- */
 th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{color:var(--uzio-color-action)}
@@ -1733,159 +1759,222 @@ function renderOpen(rows){
      all    — every non-deleted employee, leavers included. Migration completeness.
    The gap between them is large enough to invert the story: Wheels for Work
    reads 2396 of 2396 on payment method against all, but 172 of 172 against
-   active, and TRUDELO reads 11% against all versus 100% against active. */
-let COV_MODE = 'active';
-let COV_QUERY = '';
+   active, and TRUDELO reads 11% against all versus 100% against active.
 
-const COV_FILTERS = {
-  search: { id: 'covSearch', placeholder: 'Search client or code' },
-  groups: [
-    { id: 'covGap', options: [
-      { val: 'all', label: 'All' },
-      { val: 'gap', label: 'Missing some', dot: DOT.warn },
-      { val: 'zero', label: 'Nothing loaded', dot: DOT.bad }
-    ]},
-    /* Which of the three is incomplete. Separate from covGap because "this
-       client has a gap" and "this client's gap is the licence" are different
-       questions — the first triages, the second is how the work gets assigned. */
-    { id: 'covWhat', options: [
-      { val: 'any', label: 'Any data' },
-      { val: 'pay', label: 'Payment' },
-      { val: 'emg', label: 'Emergency' },
-      { val: 'lic', label: 'Licence' }
-    ]},
-    { id: 'covVendor', options: [
-      { val: 'any', label: 'Any source' },
-      { val: 'ADP', label: 'ADP' },
-      { val: 'Paycom', label: 'Paycom' },
-      { val: 'New', label: 'New' }
-    ]}
-  ],
-  toggles: [{ id: 'covHalf', label: 'Under 50% somewhere' }],
-  countId: 'covCount'
+   This view keeps its own state and re-renders rather than using
+   wireFilters: the denominator switch and the metric tiles change the numbers
+   themselves, not just which rows survive, so they cannot be expressed as a
+   row-visibility predicate. Search is the exception — it filters in place, so
+   typing does not blow away the input's focus. */
+const COV = {
+  mode: 'active',      // active | total          — denominator
+  metric: 'all',       // all | pay | emg | lic   — set by the summary tiles
+  sev: 'all',          // all | complete | partial | none
+  vendor: 'any',
+  q: '',
+  sortKey: 'worst',    // worst | name | emp | pay | emg | lic
+  sortDir: 'asc'
 };
+
+const COV_METRICS = [
+  { key: 'pay', label: 'Payment method', have: 'with_payment_method' },
+  { key: 'emg', label: 'Emergency contact', have: 'with_emergency_contact' },
+  { key: 'lic', label: 'Driving licence', have: 'with_licence' }
+];
 
 function covPct(n, d){ return d ? Math.round(n / d * 100) : 0; }
 
-/* n of d, with the same fill thresholds the historical view uses so a red bar
-   means the same thing everywhere. */
+function covFill(pct){
+  return pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
+}
+
+function covBar(pct){
+  return '<div class="uzio-progress"><div class="uzio-progress__fill' + covFill(pct) +
+    '" style="width:' + pct + '%"></div></div>';
+}
+
+/* A cell leads with the percentage and states the shortfall, not the count that
+   is already covered: "36 missing" is the thing somebody has to act on, and the
+   denominator is right there in the Employees column, so repeating "of 172" in
+   all three cells was three copies of a number the row already carries. The
+   full n-of-m stays in the tooltip. */
 function covCell(n, d){
-  if(!d) return '<td>' + NIL + '</td>';
-  const pct = covPct(n, d);
-  const fill = pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
-  return '<td style="min-width:132px">' +
-    '<div class="tnum" style="font-size:12px;margin-bottom:4px">' +
-      Number(n).toLocaleString() + ' <span style="color:var(--uzio-color-text-muted)">of ' +
-      Number(d).toLocaleString() + '</span> &middot; ' + pct + '%</div>' +
-    '<div class="uzio-progress"><div class="uzio-progress__fill' + fill +
-      '" style="width:' + pct + '%"></div></div></td>';
+  if(!d) return '<td class="cov-cell">' + NIL + '</td>';
+  const pct = covPct(n, d), short = d - n;
+  return '<td class="cov-cell" title="' + n + ' of ' + d + '">' +
+    '<div class="cov-cell__pct">' + pct + '%</div>' +
+    covBar(pct) +
+    '<div class="cov-cell__gap">' + (short > 0 ? short.toLocaleString() + ' missing' : 'complete') +
+    '</div></td>';
 }
 
 function renderCoverage(){
   const el = panel('coverage-content');
   const rows = DATA.coverage || [];
-  const active = COV_MODE === 'active';
-  const den = r => active ? r.active_employees : r.total_employees;
-  const pay = r => active ? r.active_with_payment_method : r.total_with_payment_method;
-  const emg = r => active ? r.active_with_emergency_contact : r.total_with_emergency_contact;
-  const lic = r => active ? r.active_with_licence : r.total_with_licence;
+  const active = COV.mode === 'active';
+  const suffix = active ? 'active_' : 'total_';
+  const den = r => (active ? r.active_employees : r.total_employees) || 0;
+  const got = (r, m) => (r[suffix + m.have]) || 0;
 
-  // Vendor lives on client_overview, not here, so it is looked up by short code.
+  // client_overview.vendor only ever holds ADP, Paycom or null — there is no
+  // 'New' value in the data. Defaulting null to 'New' mislabelled 64 DSPs,
+  // Stave among them, which is mid-migration from Paycom.
   const vendorOf = {};
-  (DATA.clients || []).forEach(c => { vendorOf[c.dsp_short_code] = c.vendor || 'New'; });
+  (DATA.clients || []).forEach(c => { vendorOf[c.dsp_short_code] = c.vendor || 'Not set'; });
 
-  const sorted = rows.slice().sort((a, b) => {
-    // Worst coverage first — this view exists to surface gaps, so a client with
-    // nothing loaded must not be buried under the clients that are already done.
-    const score = r => covPct(pay(r), den(r)) + covPct(emg(r), den(r)) + covPct(lic(r), den(r));
-    const wa = score(a), wb = score(b);
-    return wa !== wb ? wa - wb : (den(b) || 0) - (den(a) || 0);
+  // One pass builds everything the tiles, the filters and the table need.
+  const items = rows.map(r => {
+    const d = den(r);
+    const pcts = {};
+    COV_METRICS.forEach(m => { pcts[m.key] = covPct(got(r, m), d); });
+    // Severity is judged on the selected metric, or on the weakest of the three
+    // when no metric is picked — otherwise "complete" would mean different
+    // things depending on which tile happened to be active.
+    const relevant = COV.metric === 'all'
+      ? COV_METRICS.map(m => pcts[m.key])
+      : [pcts[COV.metric]];
+    const worst = Math.min.apply(null, relevant);
+    return {
+      r: r, d: d, pcts: pcts,
+      vendor: vendorOf[r.dsp_short_code] || 'Not set',
+      sev: d === 0 ? 'complete' : (worst === 0 ? 'none' : (worst === 100 ? 'complete' : 'partial')),
+      score: COV_METRICS.reduce((s, m) => s + pcts[m.key], 0),
+      name: ((r.company_name || '') + ' ' + (r.dsp_short_code || '')).toLowerCase()
+    };
   });
 
-  const tot = rows.reduce((s, r) => s + (den(r) || 0), 0);
-  const totPay = rows.reduce((s, r) => s + (pay(r) || 0), 0);
-  const totEmg = rows.reduce((s, r) => s + (emg(r) || 0), 0);
-  const totLic = rows.reduce((s, r) => s + (lic(r) || 0), 0);
+  // Tiles summarise the whole population, not the filtered slice — they are the
+  // headline number and must not move when someone narrows the table.
+  const tiles = COV_METRICS.map(m => {
+    const tot = items.reduce((s, i) => s + i.d, 0);
+    const have = rows.reduce((s, r) => s + ((r[suffix + m.have]) || 0), 0);
+    const done = items.filter(i => i.d > 0 && i.pcts[m.key] === 100).length;
+    const zero = items.filter(i => i.d > 0 && i.pcts[m.key] === 0).length;
+    const pct = covPct(have, tot);
+    return { m: m, pct: pct, have: have, tot: tot, done: done, zero: zero };
+  });
 
-  const modeChips =
-    '<div class="filter-bar" style="margin-bottom:0;border-bottom:0;padding-bottom:0">' +
-    '<div class="chip-group" id="covMode">' +
-      '<button class="uzio-filter-chip' + (active ? ' is-active' : '') +
-        '" data-val="active">Active employees</button>' +
-      '<button class="uzio-filter-chip' + (active ? '' : ' is-active') +
-        '" data-val="total">All (incl. leavers)</button>' +
+  const tileHtml = '<div class="cov-metrics">' + tiles.map(t =>
+    '<button class="cov-metric' + (COV.metric === t.m.key ? ' is-active' : '') +
+      '" data-metric="' + t.m.key + '">' +
+      '<div class="cov-metric__label">' + esc(t.m.label) + '</div>' +
+      '<div class="cov-metric__pct">' + t.pct + '%</div>' +
+      covBar(t.pct) +
+      '<div class="cov-metric__sub">' + t.have.toLocaleString() + ' of ' + t.tot.toLocaleString() +
+        ' employees<br>' + t.done + ' clients complete &middot; ' + t.zero + ' with none</div>' +
+    '</button>').join('') + '</div>';
+
+  const chips = (id, opts, cur) =>
+    '<div class="chip-group" id="' + id + '">' + opts.map(o =>
+      '<button class="uzio-filter-chip' + (cur === o.val ? ' is-active' : '') +
+      '" data-val="' + esc(o.val) + '">' +
+      (o.dot ? '<span class="uzio-filter-chip__dot" style="background:' + o.dot + '"></span>' : '') +
+      esc(o.label) + '</button>').join('') + '</div>';
+
+  const filterHtml =
+    '<div class="filter-row"><span class="filter-row__label">Count</span>' +
+      chips('covMode', [
+        { val: 'active', label: 'Active employees' },
+        { val: 'total', label: 'All (incl. leavers)' }
+      ], COV.mode) +
+      '<span class="filter-row__label" style="margin-left:8px">Status</span>' +
+      chips('covSev', [
+        { val: 'all', label: 'All' },
+        { val: 'complete', label: 'Complete', dot: DOT.good },
+        { val: 'partial', label: 'Partial', dot: DOT.warn },
+        { val: 'none', label: 'Nothing loaded', dot: DOT.bad }
+      ], COV.sev) +
     '</div>' +
-    '<span class="result-count">' + rows.length + ' DSPs &middot; ' +
-      tot.toLocaleString() + ' employees &middot; payment ' + covPct(totPay, tot) + '% &middot; ' +
-      'emergency ' + covPct(totEmg, tot) + '% &middot; licence ' + covPct(totLic, tot) + '%</span></div>';
+    '<div class="filter-row"><span class="filter-row__label">Source</span>' +
+      chips('covVendor', [
+        { val: 'any', label: 'Any' }, { val: 'ADP', label: 'ADP' },
+        { val: 'Paycom', label: 'Paycom' }, { val: 'Not set', label: 'Not set' }
+      ], COV.vendor) +
+      '<div class="uzio-search" style="margin-left:8px"><span class="uzio-search__icon">&#8981;</span>' +
+        '<input class="uzio-search__input" id="covSearch" placeholder="Search client or code" ' +
+        'aria-label="Search client or code" value="' + esc(COV.q) + '"></div>' +
+      '<span class="result-count" id="covCount"></span>' +
+    '</div>';
 
-  const body = sorted.map(r => {
-    const d = den(r) || 0, p = pay(r) || 0, e = emg(r) || 0, l = lic(r) || 0;
-    let bucket = 'ok';
-    if(d > 0 && (p === 0 || e === 0 || l === 0)) bucket = 'zero';
-    else if(d > 0 && (p < d || e < d || l < d)) bucket = 'gap';
-    const miss = [];
-    if(d > 0 && p < d) miss.push('pay');
-    if(d > 0 && e < d) miss.push('emg');
-    if(d > 0 && l < d) miss.push('lic');
-    const half = d > 0 && (covPct(p, d) < 50 || covPct(e, d) < 50 || covPct(l, d) < 50);
-    return '<tr data-name="' + esc(((r.company_name || '') + ' ' + (r.dsp_short_code || '')).toLowerCase()) +
-      '" data-bucket="' + bucket + '" data-miss="' + miss.join(',') +
-      '" data-vendor="' + esc(vendorOf[r.dsp_short_code] || 'New') +
-      '" data-half="' + (half ? '1' : '0') + '">' +
+  const dir = COV.sortDir === 'asc' ? 1 : -1;
+  const sorted = items.slice().sort((a, b) => {
+    if(COV.sortKey === 'name') return dir * a.name.localeCompare(b.name);
+    if(COV.sortKey === 'emp') return dir * (a.d - b.d);
+    if(COV.sortKey === 'worst') return (a.score - b.score) * dir || b.d - a.d;
+    return dir * (a.pcts[COV.sortKey] - b.pcts[COV.sortKey]) || b.d - a.d;
+  });
+
+  const body = sorted.map(i => {
+    const r = i.r;
+    return '<tr data-name="' + esc(i.name) + '" data-sev="' + i.sev +
+      '" data-vendor="' + esc(i.vendor) + '"' + (i.sev === 'none' ? ' class="cov-none"' : '') + '>' +
       '<td class="name-cell"><b title="' + esc(r.company_name) + '">' + esc(r.company_name) + '</b>' +
-        '<div class="sub">' + esc(r.dsp_short_code || '') +
-        ' &middot; ' + esc(vendorOf[r.dsp_short_code] || 'New') + '</div></td>' +
-      '<td>' + num(d) + '</td>' +
-      covCell(p, d) +
-      covCell(e, d) +
-      covCell(l, d) +
-      '<td class="sub">' + fmtDate(r.checked_date) + '</td>' +
-    '</tr>';
+        '<div class="sub">' + esc(r.dsp_short_code || '') + ' &middot; ' + esc(i.vendor) + '</div></td>' +
+      '<td>' + num(i.d) + '</td>' +
+      COV_METRICS.map(m => covCell(got(r, m), i.d)).join('') +
+      '</tr>';
   }).join('');
 
-  el.innerHTML = modeChips + buildFilters(COV_FILTERS) +
-    '<div class="table-shell"><table class="uzio-table" id="covTable">' +
-    '<thead><tr><th>Client</th><th>' + (active ? 'Active' : 'All') + ' employees</th>' +
-    '<th>Payment method</th><th>Emergency contact</th><th>Driving licence</th>' +
-    '<th>Checked</th></tr></thead>' +
-    '<tbody>' + body + '</tbody></table></div>';
+  const sortTh = (key, label) =>
+    '<th class="sortable' + (COV.sortKey === key ? (COV.sortDir === 'asc' ? ' sort-asc' : ' sort-desc') : '') +
+    '" data-sort="' + key + '">' + label + '</th>';
 
-  // The mode chips sit outside wireFilters because switching denominator is a
-  // re-render, not a filter — the numbers themselves change, not just which
-  // rows survive.
-  el.querySelectorAll('#covMode .uzio-filter-chip').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if(btn.dataset.val === COV_MODE) return;
-      COV_MODE = btn.dataset.val;
-      renderCoverage();
-    });
-  });
+  el.innerHTML = tileHtml + filterHtml +
+    '<div class="table-shell"><table class="uzio-table" id="covTable"><thead><tr>' +
+      sortTh('name', 'Client') +
+      sortTh('emp', (active ? 'Active' : 'All') + ' employees') +
+      COV_METRICS.map(m => sortTh(m.key, m.label)).join('') +
+    '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+    '<div class="cov-foot">Counted from prod on ' + fmtDate(rows.length ? rows[0].checked_date : null) +
+      '. Percentages are of ' + (active ? 'employees still on the books' : 'every employee ever loaded') +
+      '.</div>';
 
-  const records = Array.from(el.querySelectorAll('#covTable tbody tr')).map(tr => ({
-    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket,
-    miss: (tr.dataset.miss || '').split(',').filter(Boolean),
-    vendor: tr.dataset.vendor, half: tr.dataset.half === '1'
+  /* ---- wiring: anything that changes the numbers re-renders ---- */
+  const rerender = (fn) => (e) => {
+    const btn = e.target.closest('[data-val],[data-metric],[data-sort]');
+    if(!btn) return;
+    fn(btn);
+    renderCoverage();
+  };
+  el.querySelector('.cov-metrics').addEventListener('click', rerender(btn => {
+    const k = btn.dataset.metric;
+    COV.metric = (COV.metric === k) ? 'all' : k;   // second click clears it
   }));
-  wireFilters(el, COV_FILTERS, records, (r, s) =>
-    (!s.q || r.name.indexOf(s.q) !== -1) &&
-    // 'Missing some' is the broader bucket, so 'Nothing loaded' rows belong in
-    // it too — otherwise the worst clients vanish from the gap filter.
-    (s.covGap === 'all' || r.bucket === s.covGap ||
-      (s.covGap === 'gap' && r.bucket === 'zero')) &&
-    (s.covWhat === 'any' || r.miss.indexOf(s.covWhat) !== -1) &&
-    (s.covVendor === 'any' || r.vendor === s.covVendor) &&
-    (!s.covHalf || r.half),
-    (n, total) => n + ' of ' + total + ' clients'
-  );
+  el.querySelector('#covMode').addEventListener('click', rerender(b => { COV.mode = b.dataset.val; }));
+  el.querySelector('#covSev').addEventListener('click', rerender(b => { COV.sev = b.dataset.val; }));
+  el.querySelector('#covVendor').addEventListener('click', rerender(b => { COV.vendor = b.dataset.val; }));
+  el.querySelector('thead').addEventListener('click', rerender(b => {
+    const k = b.dataset.sort;
+    if(COV.sortKey === k) COV.sortDir = COV.sortDir === 'asc' ? 'desc' : 'asc';
+    else { COV.sortKey = k; COV.sortDir = k === 'name' ? 'asc' : 'asc'; }
+  }));
 
-  // Re-renders wipe the search box, so put the typed query back.
+  /* ---- search filters in place so the box keeps focus ---- */
+  const trs = Array.from(el.querySelectorAll('#covTable tbody tr'));
+  const countEl = el.querySelector('#covCount');
+  function applyRows(){
+    let shown = 0;
+    trs.forEach(tr => {
+      const ok =
+        (!COV.q || tr.dataset.name.indexOf(COV.q) !== -1) &&
+        (COV.sev === 'all' || tr.dataset.sev === COV.sev) &&
+        (COV.vendor === 'any' || tr.dataset.vendor === COV.vendor);
+      tr.style.display = ok ? '' : 'none';
+      if(ok) shown++;
+    });
+    countEl.textContent = shown + ' of ' + trs.length + ' clients';
+  }
   const box = el.querySelector('#covSearch');
-  if(box && COV_QUERY){ box.value = COV_QUERY; box.dispatchEvent(new Event('input')); }
-  if(box) box.addEventListener('input', () => { COV_QUERY = box.value; });
+  box.addEventListener('input', () => { COV.q = box.value.toLowerCase().trim(); applyRows(); });
+  applyRows();
 
-  return { clients: rows.length, pay: covPct(totPay, tot),
-           emg: covPct(totEmg, tot), lic: covPct(totLic, tot) };
+  const totAll = items.reduce((s, i) => s + i.d, 0);
+  return {
+    clients: rows.length,
+    pay: covPct(rows.reduce((s, r) => s + ((r[suffix + 'with_payment_method']) || 0), 0), totAll),
+    emg: covPct(rows.reduce((s, r) => s + ((r[suffix + 'with_emergency_contact']) || 0), 0), totAll),
+    lic: covPct(rows.reduce((s, r) => s + ((r[suffix + 'with_licence']) || 0), 0), totAll)
+  };
 }
 
 /* ==================== INIT ==================== */

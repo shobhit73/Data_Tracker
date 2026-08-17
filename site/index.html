@@ -1738,14 +1738,30 @@ let COV_MODE = 'active';
 let COV_QUERY = '';
 
 const COV_FILTERS = {
-  search: { id: 'covSearch', placeholder: 'Search client' },
+  search: { id: 'covSearch', placeholder: 'Search client or code' },
   groups: [
     { id: 'covGap', options: [
       { val: 'all', label: 'All' },
       { val: 'gap', label: 'Missing some', dot: DOT.warn },
       { val: 'zero', label: 'Nothing loaded', dot: DOT.bad }
+    ]},
+    /* Which of the three is incomplete. Separate from covGap because "this
+       client has a gap" and "this client's gap is the licence" are different
+       questions — the first triages, the second is how the work gets assigned. */
+    { id: 'covWhat', options: [
+      { val: 'any', label: 'Any data' },
+      { val: 'pay', label: 'Payment' },
+      { val: 'emg', label: 'Emergency' },
+      { val: 'lic', label: 'Licence' }
+    ]},
+    { id: 'covVendor', options: [
+      { val: 'any', label: 'Any source' },
+      { val: 'ADP', label: 'ADP' },
+      { val: 'Paycom', label: 'Paycom' },
+      { val: 'New', label: 'New' }
     ]}
   ],
+  toggles: [{ id: 'covHalf', label: 'Under 50% somewhere' }],
   countId: 'covCount'
 };
 
@@ -1772,18 +1788,24 @@ function renderCoverage(){
   const den = r => active ? r.active_employees : r.total_employees;
   const pay = r => active ? r.active_with_payment_method : r.total_with_payment_method;
   const emg = r => active ? r.active_with_emergency_contact : r.total_with_emergency_contact;
+  const lic = r => active ? r.active_with_licence : r.total_with_licence;
+
+  // Vendor lives on client_overview, not here, so it is looked up by short code.
+  const vendorOf = {};
+  (DATA.clients || []).forEach(c => { vendorOf[c.dsp_short_code] = c.vendor || 'New'; });
 
   const sorted = rows.slice().sort((a, b) => {
     // Worst coverage first — this view exists to surface gaps, so a client with
     // nothing loaded must not be buried under the clients that are already done.
-    const wa = covPct(pay(a), den(a)) + covPct(emg(a), den(a));
-    const wb = covPct(pay(b), den(b)) + covPct(emg(b), den(b));
+    const score = r => covPct(pay(r), den(r)) + covPct(emg(r), den(r)) + covPct(lic(r), den(r));
+    const wa = score(a), wb = score(b);
     return wa !== wb ? wa - wb : (den(b) || 0) - (den(a) || 0);
   });
 
   const tot = rows.reduce((s, r) => s + (den(r) || 0), 0);
   const totPay = rows.reduce((s, r) => s + (pay(r) || 0), 0);
   const totEmg = rows.reduce((s, r) => s + (emg(r) || 0), 0);
+  const totLic = rows.reduce((s, r) => s + (lic(r) || 0), 0);
 
   const modeChips =
     '<div class="filter-bar" style="margin-bottom:0;border-bottom:0;padding-bottom:0">' +
@@ -1795,19 +1817,29 @@ function renderCoverage(){
     '</div>' +
     '<span class="result-count">' + rows.length + ' DSPs &middot; ' +
       tot.toLocaleString() + ' employees &middot; payment ' + covPct(totPay, tot) + '% &middot; ' +
-      'emergency ' + covPct(totEmg, tot) + '%</span></div>';
+      'emergency ' + covPct(totEmg, tot) + '% &middot; licence ' + covPct(totLic, tot) + '%</span></div>';
 
   const body = sorted.map(r => {
-    const d = den(r) || 0, p = pay(r) || 0, e = emg(r) || 0;
+    const d = den(r) || 0, p = pay(r) || 0, e = emg(r) || 0, l = lic(r) || 0;
     let bucket = 'ok';
-    if(d > 0 && (p === 0 || e === 0)) bucket = 'zero';
-    else if(d > 0 && (p < d || e < d)) bucket = 'gap';
-    return '<tr data-name="' + esc((r.company_name || '').toLowerCase()) + '" data-bucket="' + bucket + '">' +
+    if(d > 0 && (p === 0 || e === 0 || l === 0)) bucket = 'zero';
+    else if(d > 0 && (p < d || e < d || l < d)) bucket = 'gap';
+    const miss = [];
+    if(d > 0 && p < d) miss.push('pay');
+    if(d > 0 && e < d) miss.push('emg');
+    if(d > 0 && l < d) miss.push('lic');
+    const half = d > 0 && (covPct(p, d) < 50 || covPct(e, d) < 50 || covPct(l, d) < 50);
+    return '<tr data-name="' + esc(((r.company_name || '') + ' ' + (r.dsp_short_code || '')).toLowerCase()) +
+      '" data-bucket="' + bucket + '" data-miss="' + miss.join(',') +
+      '" data-vendor="' + esc(vendorOf[r.dsp_short_code] || 'New') +
+      '" data-half="' + (half ? '1' : '0') + '">' +
       '<td class="name-cell"><b title="' + esc(r.company_name) + '">' + esc(r.company_name) + '</b>' +
-        '<div class="sub">' + esc(r.dsp_short_code || '') + '</div></td>' +
+        '<div class="sub">' + esc(r.dsp_short_code || '') +
+        ' &middot; ' + esc(vendorOf[r.dsp_short_code] || 'New') + '</div></td>' +
       '<td>' + num(d) + '</td>' +
       covCell(p, d) +
       covCell(e, d) +
+      covCell(l, d) +
       '<td class="sub">' + fmtDate(r.checked_date) + '</td>' +
     '</tr>';
   }).join('');
@@ -1815,7 +1847,8 @@ function renderCoverage(){
   el.innerHTML = modeChips + buildFilters(COV_FILTERS) +
     '<div class="table-shell"><table class="uzio-table" id="covTable">' +
     '<thead><tr><th>Client</th><th>' + (active ? 'Active' : 'All') + ' employees</th>' +
-    '<th>Payment method</th><th>Emergency contact</th><th>Checked</th></tr></thead>' +
+    '<th>Payment method</th><th>Emergency contact</th><th>Driving licence</th>' +
+    '<th>Checked</th></tr></thead>' +
     '<tbody>' + body + '</tbody></table></div>';
 
   // The mode chips sit outside wireFilters because switching denominator is a
@@ -1830,12 +1863,19 @@ function renderCoverage(){
   });
 
   const records = Array.from(el.querySelectorAll('#covTable tbody tr')).map(tr => ({
-    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket
+    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket,
+    miss: (tr.dataset.miss || '').split(',').filter(Boolean),
+    vendor: tr.dataset.vendor, half: tr.dataset.half === '1'
   }));
   wireFilters(el, COV_FILTERS, records, (r, s) =>
     (!s.q || r.name.indexOf(s.q) !== -1) &&
+    // 'Missing some' is the broader bucket, so 'Nothing loaded' rows belong in
+    // it too — otherwise the worst clients vanish from the gap filter.
     (s.covGap === 'all' || r.bucket === s.covGap ||
-      (s.covGap === 'gap' && r.bucket === 'zero')),
+      (s.covGap === 'gap' && r.bucket === 'zero')) &&
+    (s.covWhat === 'any' || r.miss.indexOf(s.covWhat) !== -1) &&
+    (s.covVendor === 'any' || r.vendor === s.covVendor) &&
+    (!s.covHalf || r.half),
     (n, total) => n + ' of ' + total + ' clients'
   );
 
@@ -1844,7 +1884,8 @@ function renderCoverage(){
   if(box && COV_QUERY){ box.value = COV_QUERY; box.dispatchEvent(new Event('input')); }
   if(box) box.addEventListener('input', () => { COV_QUERY = box.value; });
 
-  return { clients: rows.length, pay: covPct(totPay, tot), emg: covPct(totEmg, tot) };
+  return { clients: rows.length, pay: covPct(totPay, tot),
+           emg: covPct(totEmg, tot), lic: covPct(totLic, tot) };
 }
 
 /* ==================== INIT ==================== */
@@ -1889,7 +1930,8 @@ async function loadAll(){
   if(out.overview) parts.push(out.overview.total + ' DSPs · ' + out.overview.withFein + ' matched to prod');
   if(out.api) parts.push('API: ' + out.api.started + ' of ' + out.api.tracked + ' started');
   if(out.docs) parts.push('Docs: ' + out.docs.clients + ' clients · ' + out.docs.notDone + ' not done');
-  if(out.coverage) parts.push('Coverage: payment ' + out.coverage.pay + '% · emergency ' + out.coverage.emg + '%');
+  if(out.coverage) parts.push('Coverage: payment ' + out.coverage.pay + '% · emergency ' +
+    out.coverage.emg + '% · licence ' + out.coverage.lic + '%');
   if(DATA.histScope) parts.push('Historical: ' + DATA.histScope.length + ' DSPs in window');
   parts.push('Audit: 14 clients');
   document.getElementById('sidebar-foot').innerHTML = parts.join('<br>');

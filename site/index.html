@@ -167,6 +167,26 @@ h1,h2,h3,h4{margin:0;color:var(--uzio-color-text-heading)}
    behind, so it gets an edge marker rather than just a shorter bar. */
 tr.cov-none td:first-child{box-shadow:inset 3px 0 0 var(--uzio-color-error)}
 .cov-foot{font-size:11.5px;color:var(--uzio-color-text-muted);margin-top:12px}
+/* ---------- load history (expanded row) ---------- */
+tr.cov-row{cursor:pointer}
+tr.cov-row:hover{background:var(--uzio-color-bg-row-hover)}
+td.cov-tl{padding:18px 20px;background:var(--uzio-color-bg-subtle)}
+.cov-tl__head{font-size:12.5px;color:var(--uzio-color-text-body);line-height:1.7;margin-bottom:14px}
+.cov-tl__head b{color:var(--uzio-color-text-heading)}
+.cov-tl__chart{display:flex;align-items:flex-end;gap:4px;height:120px;overflow-x:auto;padding-bottom:2px}
+.cov-tl__slot{display:flex;align-items:flex-end;gap:2px;height:100%;flex:0 0 auto;cursor:default}
+.cov-tl__bar{width:13px;min-height:3px;border-radius:2px 2px 0 0}
+/* Colour carries the "who": one glance separates a staff bulk load from the
+   client adding people one at a time. */
+.cov-tl__bar--staff{background:var(--uzio-color-action)}
+.cov-tl__bar--client{background:var(--uzio-color-orange)}
+.cov-tl__bar--system{background:var(--uzio-color-success)}
+.cov-tl__bar--term{width:8px;background:var(--uzio-color-error);opacity:.7}
+.cov-tl__legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;
+  color:var(--uzio-color-text-muted)}
+.cov-tl__key{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.cov-tl__axis{display:flex;gap:4px;margin-top:6px;font-size:10px;color:var(--uzio-color-text-faint)}
+.cov-tl__empty{font-size:12.5px;color:var(--uzio-color-text-muted)}
 
 /* ---------- sortable headers ---------- */
 th.sortable{cursor:pointer;user-select:none}
@@ -461,8 +481,14 @@ function esc(s){
 }
 function fmtDate(d){
   if(!d) return NIL;
+  return '<span class="tnum">' + fmtDatePlain(d) + '</span>';
+}
+/* Same date, no markup — for title attributes, where HTML would be shown
+   literally rather than rendered. */
+function fmtDatePlain(d){
+  if(!d) return '';
   const p = d.split('-');
-  return '<span class="tnum">' + p[1] + '/' + p[2] + '/' + p[0].slice(2) + '</span>';
+  return p[1] + '/' + p[2] + '/' + p[0].slice(2);
 }
 const DOT = {
   good: 'var(--uzio-color-success)',
@@ -576,7 +602,7 @@ function statusBucket(s){
 // Every DSP row, keyed by short code, so the detail sub-page can look one up
 // without re-fetching. DATA holds the other five datasets for the same reason.
 let CLIENTS_BY_CODE = {};
-const DATA = {};
+const DATA = { loadEvents: {} };   // loadEvents is a per-client cache, filled on demand
 const PAGE_SIZES = [25, 50, 100];
 
 /* The five sources spell the same company differently — "InnovDel" vs
@@ -1808,6 +1834,80 @@ function covCell(n, d){
     '</div></td>';
 }
 
+/* Load history for one client: when employees actually arrived, in what size
+   batches, and who put them there.
+
+   This is the cross-check on API Activity. api_activity_runs holds one
+   last_run_date per module, which cannot distinguish "the census loaded 982
+   people" from "somebody added 7 stragglers three weeks later" — for Stave it
+   records only the second. The bars show both, so a claimed run with no batch
+   behind it is visible, and so is a real load the log dated wrongly. */
+function covTimeline(evs){
+  if(!evs.length) return '<div class="cov-tl__empty">No load history recorded for this client.</div>';
+
+  const added = evs.filter(e => e.kind === 'added')
+    .sort((a, b) => (a.event_date || '').localeCompare(b.event_date || ''));
+  const totalAdded = added.reduce((s, e) => s + (e.employees || 0), 0);
+
+  // The day the bulk landed, and the day the majority had landed by — the two
+  // questions a single last_run_date cannot answer.
+  const biggest = added.reduce((m, e) => (!m || e.employees > m.employees) ? e : m, null);
+  let running = 0, majorityOn = null;
+  added.forEach(e => {
+    running += e.employees || 0;
+    if(!majorityOn && totalAdded && running >= totalAdded / 2) majorityOn = e;
+  });
+
+  // One slot per date; a date can hold several actors and a departure count.
+  const byDate = {};
+  evs.forEach(e => {
+    const d = (e.event_date || '').slice(0, 10);
+    const slot = byDate[d] || (byDate[d] = { d: d, add: 0, term: 0, actors: {}, type: null });
+    if(e.kind === 'added'){
+      slot.add += e.employees || 0;
+      slot.actors[e.actor] = (slot.actors[e.actor] || 0) + (e.employees || 0);
+      // the slot takes the colour of whoever put the most people in it
+      if(!slot.type || slot.actors[e.actor] > slot.top) { slot.type = e.actor_type; slot.top = slot.actors[e.actor]; }
+    } else {
+      slot.term += e.employees || 0;
+    }
+  });
+  const slots = Object.keys(byDate).sort().map(k => byDate[k]);
+  const peak = Math.max.apply(null, slots.map(s => Math.max(s.add, s.term)).concat([1]));
+
+  const bars = slots.map(s => {
+    const who = Object.keys(s.actors).map(a => a + ' (' + s.actors[a].toLocaleString() + ')').join(', ');
+    const tip = fmtDatePlain(s.d) +
+      (s.add ? ' · ' + s.add.toLocaleString() + ' added' + (who ? ' by ' + who : '') : '') +
+      (s.term ? ' · ' + s.term.toLocaleString() + ' left' : '');
+    return '<div class="cov-tl__slot" title="' + esc(tip) + '">' +
+      (s.add ? '<div class="cov-tl__bar cov-tl__bar--' + esc(s.type || 'staff') +
+        '" style="height:' + Math.max(3, Math.round(s.add / peak * 100)) + '%"></div>' : '') +
+      (s.term ? '<div class="cov-tl__bar cov-tl__bar--term" style="height:' +
+        Math.max(3, Math.round(s.term / peak * 100)) + '%"></div>' : '') +
+    '</div>';
+  }).join('');
+
+  const pct = (n) => totalAdded ? Math.round(n / totalAdded * 100) : 0;
+  const head =
+    (biggest ? 'Biggest load <b>' + fmtDate(biggest.event_date) + '</b> — ' +
+      biggest.employees.toLocaleString() + ' employees (' + pct(biggest.employees) +
+      '% of everyone ever loaded) by <b>' + esc(biggest.actor) + '</b>.' : '') +
+    (majorityOn ? '<br>Half of them were in by <b>' + fmtDate(majorityOn.event_date) + '</b>.' : '') +
+    '<br>' + added.length + ' load event' + (added.length === 1 ? '' : 's') + ' in total, ' +
+      totalAdded.toLocaleString() + ' employees added.';
+
+  return '<div class="cov-tl__head">' + head + '</div>' +
+    '<div class="cov-tl__chart">' + bars + '</div>' +
+    '<div class="cov-tl__legend">' +
+      '<span><i class="cov-tl__key" style="background:var(--uzio-color-action)"></i>Added by Uzio staff</span>' +
+      '<span><i class="cov-tl__key" style="background:var(--uzio-color-orange)"></i>Added by the client</span>' +
+      '<span><i class="cov-tl__key" style="background:var(--uzio-color-success)"></i>Added by SYSTEM</span>' +
+      '<span><i class="cov-tl__key" style="background:var(--uzio-color-error)"></i>Left (since first load)</span>' +
+      '<span>Hover a bar for the date, the count and who did it.</span>' +
+    '</div>';
+}
+
 function renderCoverage(){
   const el = panel('coverage-content');
   const rows = DATA.coverage || [];
@@ -1906,8 +2006,10 @@ function renderCoverage(){
 
   const body = sorted.map(i => {
     const r = i.r;
-    return '<tr data-name="' + esc(i.name) + '" data-sev="' + i.sev +
-      '" data-vendor="' + esc(i.vendor) + '"' + (i.sev === 'none' ? ' class="cov-none"' : '') + '>' +
+    return '<tr class="cov-row' + (i.sev === 'none' ? ' cov-none' : '') +
+      '" data-code="' + esc(r.dsp_short_code || '') +
+      '" data-name="' + esc(i.name) + '" data-sev="' + i.sev +
+      '" data-vendor="' + esc(i.vendor) + '">' +
       '<td class="name-cell"><b title="' + esc(r.company_name) + '">' + esc(r.company_name) + '</b>' +
         '<div class="sub">' + esc(r.dsp_short_code || '') + ' &middot; ' + esc(i.vendor) + '</div></td>' +
       '<td>' + num(i.d) + '</td>' +
@@ -1949,10 +2051,45 @@ function renderCoverage(){
     else { COV.sortKey = k; COV.sortDir = k === 'name' ? 'asc' : 'asc'; }
   }));
 
+  /* ---- click a client to open its load history under the row ---- */
+  const tbody = el.querySelector('#covTable tbody');
+  tbody.addEventListener('click', e => {
+    const tr = e.target.closest('tr.cov-row');
+    if(!tr) return;
+    const open = tr.nextElementSibling;
+    if(open && open.classList.contains('cov-tl-row')){ open.remove(); return; }
+    // only one open at a time — two charts side by side invite comparing bars
+    // whose heights are scaled to different peaks, which would mislead.
+    Array.from(tbody.querySelectorAll('tr.cov-tl-row')).forEach(r => r.remove());
+    const code = tr.dataset.code;
+    const row = document.createElement('tr');
+    row.className = 'cov-tl-row';
+    row.innerHTML = '<td class="cov-tl" colspan="5"><div class="cov-tl__empty">Loading&hellip;</div></td>';
+    tr.insertAdjacentElement('afterend', row);
+
+    /* Fetched per client rather than preloaded: PostgREST caps a response at
+       1000 rows, and there are ~3,500 load events, so a single up-front fetch
+       silently returned only the oldest third — every client loaded after
+       April 2026 came back with an empty timeline. */
+    const draw = (evs) => {
+      if(!row.parentNode) return;                       // closed while loading
+      row.firstChild.innerHTML = covTimeline(evs);
+    };
+    if(DATA.loadEvents[code]) { draw(DATA.loadEvents[code]); return; }
+    sbGet('client_load_events?select=*&dsp_short_code=eq.' + encodeURIComponent(code) +
+          '&order=event_date.asc')
+      .then(evs => { DATA.loadEvents[code] = evs; draw(evs); })
+      .catch(e => { if(row.parentNode) row.firstChild.innerHTML =
+        '<div class="err-box">' + esc(e.message) + '</div>'; });
+  });
+
   /* ---- search filters in place so the box keeps focus ---- */
-  const trs = Array.from(el.querySelectorAll('#covTable tbody tr'));
+  const trs = Array.from(el.querySelectorAll('#covTable tbody tr.cov-row'));
   const countEl = el.querySelector('#covCount');
   function applyRows(){
+    // An open timeline belongs to a specific row; once filtering moves the
+    // rows around it would sit under whatever landed above it.
+    Array.from(el.querySelectorAll('tr.cov-tl-row')).forEach(r => r.remove());
     let shown = 0;
     trs.forEach(tr => {
       const ok =

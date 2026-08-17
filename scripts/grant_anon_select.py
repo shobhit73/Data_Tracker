@@ -13,6 +13,7 @@ TABLES = [
     "api_activity_runs",
     "open_items",
     "client_data_coverage",
+    "client_load_events",
 ]
 
 if __name__ == "__main__":

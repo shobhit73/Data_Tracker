@@ -22,7 +22,8 @@ from contextlib import redirect_stdout
 STEPS = [
     ("backfill_fein", "Match unmatched DSPs to prod employers"),
     ("populate_work_locations", "Refresh work locations from prod"),
-    ("populate_data_coverage", "Refresh payment-method / emergency-contact coverage"),
+    ("populate_data_coverage", "Refresh payment-method / emergency-contact / licence coverage"),
+    ("populate_load_history", "Refresh when employees were added or left, and by whom"),
 ]
 
 

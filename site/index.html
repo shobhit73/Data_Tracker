@@ -417,6 +417,9 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
   <button class="uzio-sidebar-x__item" data-view="coverage" data-title="Data Coverage">
     <span class="uzio-icon uzio-icon--hr-compliance"></span> <span class="nav-label">Data Coverage</span>
   </button>
+  <button class="uzio-sidebar-x__item" data-view="health" data-title="Payroll Health Check">
+    <span class="uzio-icon uzio-icon--task"></span> <span class="nav-label">Payroll Health</span>
+  </button>
   <button class="uzio-sidebar-x__item" data-view="open" data-title="Open Items">
     <span class="uzio-icon uzio-icon--alert-bulb"></span> <span class="nav-label">Open Items</span>
   </button>
@@ -471,6 +474,11 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
   <section class="app-view" id="view-coverage">
     <h1 class="uzio-page-title">Data Coverage</h1>
     <div id="coverage-content" class="skeleton">Loading&hellip;</div>
+  </section>
+
+  <section class="app-view" id="view-health">
+    <h1 class="uzio-page-title">Payroll Health Check</h1>
+    <div id="health-content" class="skeleton">Loading&hellip;</div>
   </section>
 
   <section class="app-view" id="view-open">
@@ -2285,6 +2293,124 @@ function renderCoverage(){
   };
 }
 
+/* ==================== PAYROLL HEALTH CHECK ====================
+   Does every TY2026 pay period that has run have payroll behind it, and where
+   does the handover from the old vendor sit.
+
+   Built as a checks page rather than a single table because more checks are
+   coming (QOT period coverage, prior-payroll file coverage, daily-bot versus
+   historical-bot agreement). Today it carries one: Uzio-side coverage.
+
+   Two things the numbers only make sense with:
+   - Coverage is an interval union, not a period count. Prior payroll arrives in
+     consolidated buckets — Lazo's whole pre-go-live year is four rows, one
+     spanning 2025-12-14 to 2026-03-21 — so counting rows against the weekly
+     calendar reported 23 missing periods for a client that is fully covered.
+   - A client new to the platform has no previous system to load from, so an
+     empty pre-go-live stretch is correct. Without separating those, 12 of 21
+     flagged clients were false alarms. */
+const HEALTH_STATUS_CLASS = {
+  'Covered': 'success',
+  'Handover gap': 'error',
+  'Gap': 'warning',
+  'New to platform': 'neutral'
+};
+
+const HEALTH_FILTERS = {
+  search: { id: 'hcSearch', placeholder: 'Search client or code' },
+  groups: [
+    { id: 'hcStatus', options: [
+      { val: 'all', label: 'All' },
+      { val: 'Handover gap', label: 'Handover gap', dot: DOT.bad },
+      { val: 'Gap', label: 'Gap', dot: DOT.warn },
+      { val: 'Covered', label: 'Covered', dot: DOT.good },
+      { val: 'New to platform', label: 'New to platform' }
+    ]}
+  ],
+  countId: 'hcCount'
+};
+
+function span(a, b){
+  return (a && b) ? fmtDate(a) + ' – ' + fmtDate(b) : NIL;
+}
+
+function renderHealth(rows){
+  const el = panel('health-content');
+  if(!rows.length) return el.innerHTML = emptyNote('Nothing scored yet.'), null;
+
+  /* Ordering by gap size alone put Spring Logistics on top with 220 uncovered
+     days — a client new to the platform, where those days are correct. Real
+     problems lead; new-to-platform sinks to the bottom regardless of size. */
+  const RANK = { 'Handover gap': 0, 'Gap': 1, 'Covered': 2, 'New to platform': 3 };
+  rows = rows.slice().sort((a, b) => {
+    const ra = RANK[a.status] ?? 9, rb = RANK[b.status] ?? 9;
+    return ra !== rb ? ra - rb : (b.gap_days || 0) - (a.gap_days || 0);
+  });
+
+  const n = (s) => rows.filter(r => r.status === s).length;
+  const scored = rows.filter(r => r.status !== 'New to platform').length;
+  const gaps = n('Gap') + n('Handover gap');
+
+  /* The handover tile is called out on its own because it is the failure this
+     page exists to catch: the old vendor stopped, Uzio started, and a week fell
+     between the two. Looking at either side alone shows nothing wrong. */
+  const tiles =
+    '<div class="cov-metrics">' +
+      '<div class="cov-metric" style="cursor:default">' +
+        '<div class="cov-metric__label">Covered</div>' +
+        '<div class="cov-metric__pct">' + n('Covered') + '</div>' +
+        '<div class="cov-metric__sub">of ' + scored + ' clients with a previous system</div></div>' +
+      '<div class="cov-metric" style="cursor:default">' +
+        '<div class="cov-metric__label">Handover gap</div>' +
+        '<div class="cov-metric__pct">' + n('Handover gap') + '</div>' +
+        '<div class="cov-metric__sub">a week that neither the old vendor<br>nor Uzio has payroll for</div></div>' +
+      '<div class="cov-metric" style="cursor:default">' +
+        '<div class="cov-metric__label">Other gaps</div>' +
+        '<div class="cov-metric__pct">' + n('Gap') + '</div>' +
+        '<div class="cov-metric__sub">uncovered stretch elsewhere in TY2026</div></div>' +
+      '<div class="cov-metric" style="cursor:default">' +
+        '<div class="cov-metric__label">New to platform</div>' +
+        '<div class="cov-metric__pct">' + n('New to platform') + '</div>' +
+        '<div class="cov-metric__sub">no previous system — nothing to load</div></div>' +
+    '</div>';
+
+  const body = rows.map(r => {
+    const cls = HEALTH_STATUS_CLASS[r.status] || 'neutral';
+    return '<tr data-name="' + esc(((r.company_name || '') + ' ' + (r.dsp_short_code || '')).toLowerCase()) +
+      '" data-status="' + esc(r.status) + '">' +
+      '<td class="name-cell"><b title="' + esc(r.company_name) + '">' + esc(r.company_name) + '</b>' +
+        '<div class="sub">' + esc(r.dsp_short_code || '') + ' &middot; ' +
+        esc(r.previous_system || 'not set') + '</div></td>' +
+      '<td><span class="uzio-status uzio-status--' + cls + '">' + esc(r.status) + '</span></td>' +
+      '<td class="sub">' + span(r.prior_from, r.prior_to) + '</td>' +
+      '<td class="sub">' + span(r.normal_from, r.normal_to) + '</td>' +
+      '<td>' + (r.gap_days ? '<span class="tnum">' + r.gap_days + '</span> days' : NIL) + '</td>' +
+      '<td class="sub" style="white-space:normal;max-width:260px">' +
+        esc(r.gap_ranges || '') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = tiles + buildFilters(HEALTH_FILTERS) +
+    '<div class="table-shell"><table class="uzio-table" id="hcTable"><thead><tr>' +
+    '<th>Client</th><th>TY2026 coverage</th><th>Prior payroll (old vendor)</th>' +
+    '<th>Uzio payrolls</th><th>Uncovered</th><th>Gap dates</th>' +
+    '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+    '<div class="cov-foot">Coverage is measured against the pay periods that have actually run, ' +
+    'from ' + fmtDate(rows[0].target_from) + ' to each client\'s latest completed period. ' +
+    'Checked ' + fmtDate(rows[0].checked_date) + '.</div>';
+
+  const records = Array.from(el.querySelectorAll('#hcTable tbody tr')).map(tr => ({
+    el: tr, name: tr.dataset.name, status: tr.dataset.status
+  }));
+  wireFilters(el, HEALTH_FILTERS, records, (r, s) =>
+    (!s.q || r.name.indexOf(s.q) !== -1) &&
+    (s.hcStatus === 'all' || r.status === s.hcStatus),
+    (a, total) => a + ' of ' + total + ' clients'
+  );
+
+  return { scored: scored, gaps: gaps };
+}
+
 /* ==================== INIT ==================== */
 async function loadAll(){
   const out = {};
@@ -2319,6 +2445,8 @@ async function loadAll(){
       .then(r => { DATA.api = r; out.api = renderApi(); }).catch(fail('api-content')),
     sbGet('client_data_coverage?select=*&order=company_name.asc')
       .then(r => { DATA.coverage = r; out.coverage = renderCoverage(); }).catch(fail('coverage-content')),
+    sbGet('payroll_health?select=*&order=gap_days.desc')
+      .then(r => { DATA.health = r; out.health = renderHealth(r); }).catch(fail('health-content')),
     sbGet('open_items?select=*&order=date_added.desc')
       .then(r => { DATA.open = r; renderOpen(r); }).catch(fail('open-content'))
   ]);
@@ -2329,6 +2457,7 @@ async function loadAll(){
   if(out.docs) parts.push('Docs: ' + out.docs.clients + ' clients · ' + out.docs.notDone + ' not done');
   if(out.coverage) parts.push('Coverage: payment ' + out.coverage.pay + '% · emergency ' +
     out.coverage.emg + '% · licence ' + out.coverage.lic + '%');
+  if(out.health) parts.push('Payroll health: ' + out.health.gaps + ' of ' + out.health.scored + ' with gaps');
   if(DATA.histScope) parts.push('Historical: ' + DATA.histScope.length + ' DSPs in window');
   parts.push('Audit: 14 clients');
   document.getElementById('sidebar-foot').innerHTML = parts.join('<br>');

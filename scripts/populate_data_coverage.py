@@ -46,6 +46,9 @@ create table if not exists client_data_coverage (
   active_with_emergency_contact integer,
   total_with_licence integer,
   active_with_licence integer,
+  total_with_worker_comp integer,
+  active_with_worker_comp integer,
+  worker_comp_codes text,
   checked_date date,
   updated_at timestamptz default now()
 )
@@ -58,6 +61,9 @@ BACKFILL_COLS = [
     "total_with_emergency_contact integer",
     "total_with_licence integer",
     "active_with_licence integer",
+    "total_with_worker_comp integer",
+    "active_with_worker_comp integer",
+    "worker_comp_codes text",
 ]
 
 # Driving licence arrives through the ADP/Paycom census as custom fields, not as
@@ -73,8 +79,9 @@ insert into client_data_coverage
   (dsp_short_code, fein, company_name, total_employees, active_employees,
    total_with_payment_method, total_with_emergency_contact, total_with_licence,
    active_with_payment_method, active_with_emergency_contact, active_with_licence,
+   total_with_worker_comp, active_with_worker_comp, worker_comp_codes,
    checked_date)
-values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,current_date)
+values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,current_date)
 on conflict (dsp_short_code) do update set
   fein = excluded.fein,
   company_name = excluded.company_name,
@@ -86,6 +93,9 @@ on conflict (dsp_short_code) do update set
   active_with_payment_method = excluded.active_with_payment_method,
   active_with_emergency_contact = excluded.active_with_emergency_contact,
   active_with_licence = excluded.active_with_licence,
+  total_with_worker_comp = excluded.total_with_worker_comp,
+  active_with_worker_comp = excluded.active_with_worker_comp,
+  worker_comp_codes = excluded.worker_comp_codes,
   checked_date = excluded.checked_date,
   updated_at = now()
 """
@@ -114,7 +124,11 @@ def fetch_prod_coverage(feins):
         "count(distinct case when e.date_of_termination is null "
         "  and ec.id is not null then e.id end) as active_with_emergency, "
         "count(distinct case when e.date_of_termination is null "
-        "  and cf.id is not null then e.id end) as active_with_licence "
+        "  and cf.id is not null then e.id end) as active_with_licence, "
+        "count(distinct case when wc.id is not null then e.id end) "
+        "  as total_with_worker_comp, "
+        "count(distinct case when e.date_of_termination is null "
+        "  and wc.id is not null then e.id end) as active_with_worker_comp "
         "from employer_organization eo "
         "join employee e on e.employer_organization_id = eo.id and e.deleted = 0 "
         "left join employee_payment_method pm "
@@ -128,6 +142,10 @@ def fetch_prod_coverage(feins):
         "  on cf.employee_id = e.id and cf.deleted = 0 "
         "  and cf.field_key = '" + LICENCE_KEY + "' "
         "  and nullif(trim(cf.field_value), '') is not null "
+        # employee_code is a UUID in prod and therefore globally unique, so this
+        # join cannot pull in another employer's assignment.
+        "left join ups_employee_worker_compensation wc "
+        "  on wc.employee_code = e.employee_code and wc.deleted = 0 "
         "where eo.deleted = 0 "
         "and replace(coalesce(eo.fein,''),'-','') in (" + inlist + ") "
         "group by 1, 2"
@@ -146,6 +164,39 @@ def fetch_prod_coverage(feins):
     return body["data"]
 
 
+def fetch_worker_comp_codes(feins):
+    """Which codes are assigned and to how many. Kept as its own query rather
+    than another aggregate on the main one: a client can carry several codes
+    (Travel Management runs GA-4921 and AL-4921), so this is one row per code,
+    not per employer."""
+    inlist = ",".join("'" + f + "'" for f in feins)
+    sql = (
+        "select replace(coalesce(eo.fein,''),'-','') as fein_norm, "
+        "wc.worker_comp_code, count(distinct e.id) as employees "
+        "from employer_organization eo "
+        "join employee e on e.employer_organization_id = eo.id and e.deleted = 0 "
+        "join ups_employee_worker_compensation wc "
+        "  on wc.employee_code = e.employee_code and wc.deleted = 0 "
+        "where eo.deleted = 0 and e.date_of_termination is null "
+        "and replace(coalesce(eo.fein,''),'-','') in (" + inlist + ") "
+        "group by 1, 2 order by 1, 3 desc"
+    )
+    jwt = pq_helper.get_jwt()
+    status, body = pq_helper.post(
+        pq_helper.GATEWAY + "/api/neuronops/query",
+        {"sql": sql, "size": 2000},
+        {"Authorization": "Bearer " + jwt, "X-Auth-Type": "bearer"},
+    )
+    if status != 200:
+        print("worker-comp query failed:", status, str(body)[:300])
+        return {}
+    out = {}
+    for r in body["data"]:
+        out.setdefault(r["fein_norm"], []).append(
+            "%s (%s)" % (r["worker_comp_code"], r["employees"]))
+    return out
+
+
 def main():
     conn = connect()
     cur = conn.cursor()
@@ -160,9 +211,11 @@ def main():
     print(f"{len(code_by_fein)} DSPs in client_overview carry a fein")
 
     rows = fetch_prod_coverage(list(code_by_fein))
+    wc_codes = fetch_worker_comp_codes(list(code_by_fein))
+    print("clients with at least one worker-comp code:", len(wc_codes))
 
     written = 0
-    no_payment, no_emergency, no_licence = [], [], []
+    no_payment, no_emergency, no_licence, no_wc = [], [], [], []
     for r in rows:
         code = code_by_fein.get(r["fein_norm"])
         if not code:
@@ -171,12 +224,16 @@ def main():
         pay = int(r["active_with_payment"])
         emg = int(r["active_with_emergency"])
         lic = int(r["active_with_licence"])
+        wcm = int(r["active_with_worker_comp"])
+        codes = wc_codes.get(r["fein_norm"]) or []
         cur.execute(UPSERT, (code, r["fein_norm"], r["company_name"],
                              int(r["total_employees"]), active,
                              int(r["total_with_payment"]),
                              int(r["total_with_emergency"]),
                              int(r["total_with_licence"]),
-                             pay, emg, lic))
+                             pay, emg, lic,
+                             int(r["total_with_worker_comp"]), wcm,
+                             " · ".join(codes) or None))
         written += 1
         # Worth surfacing: a client with staff on the books and nothing loaded
         # for them is a real gap, not a rounding error.
@@ -186,24 +243,29 @@ def main():
             no_emergency.append((r["company_name"], active))
         if active > 0 and lic == 0:
             no_licence.append((r["company_name"], active))
+        if active > 0 and wcm == 0:
+            no_wc.append((r["company_name"], active))
     conn.commit()
 
     print(f"client_data_coverage rows written: {written}")
 
     cur.execute(
         "select sum(active_employees), sum(active_with_payment_method), "
-        "sum(active_with_emergency_contact), sum(active_with_licence) "
+        "sum(active_with_emergency_contact), sum(active_with_licence), "
+        "sum(active_with_worker_comp) "
         "from client_data_coverage")
-    a, p, e, l = cur.fetchone()
+    a, p, e, l, w = cur.fetchone()
     if a:
         print(f"across all tracked DSPs: {a} active employees, "
               f"{p} with a payment method ({100.0*p/a:.0f}%), "
               f"{e} with an emergency contact ({100.0*e/a:.0f}%), "
-              f"{l} with a driving licence ({100.0*l/a:.0f}%)")
+              f"{l} with a driving licence ({100.0*l/a:.0f}%), "
+              f"{w} with a worker comp code ({100.0*w/a:.0f}%)")
 
     for label, gaps in (("payment methods", no_payment),
                         ("emergency contacts", no_emergency),
-                        ("driving licences", no_licence)):
+                        ("driving licences", no_licence),
+                        ("worker comp assignments", no_wc)):
         if gaps:
             print(f"\nZERO {label} despite active staff ({len(gaps)}):")
             for name, n in sorted(gaps, key=lambda x: -x[1]):

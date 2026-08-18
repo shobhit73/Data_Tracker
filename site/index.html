@@ -167,6 +167,16 @@ h1,h2,h3,h4{margin:0;color:var(--uzio-color-text-heading)}
    behind, so it gets an edge marker rather than just a shorter bar. */
 tr.cov-none td:first-child{box-shadow:inset 3px 0 0 var(--uzio-color-error)}
 .cov-foot{font-size:11.5px;color:var(--uzio-color-text-muted);margin-top:12px}
+.open-meta{display:inline-flex;gap:6px;align-items:center;margin-left:9px;vertical-align:middle}
+.open-meta .uzio-status{font-size:10.5px}
+.audit-card__link{margin-top:9px;font-size:11.5px}
+.audit-card__link a{color:var(--uzio-color-action);text-decoration:none;font-weight:600}
+.audit-card__link a:hover{text-decoration:underline}
+.audit-card__link--none{color:var(--uzio-color-text-faint)}
+.bots-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;
+  font-size:12px;color:var(--uzio-color-text-muted)}
+.bots-bar a{color:var(--uzio-color-action);text-decoration:none;font-weight:600}
+.bots-bar a:hover{text-decoration:underline}
 /* ---------- load history (expanded row) ---------- */
 tr.cov-row{cursor:pointer}
 tr.cov-row:hover{background:var(--uzio-color-bg-row-hover)}
@@ -1439,6 +1449,13 @@ function renderHistorical(){
   const gotFiles = status.filter(s => s.status === 'Received').length;
 
   el.innerHTML =
+    /* These reports are pulled by the ADP/Paycom bots, so the place their
+       behaviour is documented belongs next to the coverage they produce —
+       otherwise "why did this not arrive" starts with hunting for the runbook. */
+    '<div class="bots-bar"><span>Reports are pulled by our automation bots —</span>' +
+    '<a href="https://drive.google.com/drive/folders/16eSRLwiT3apJS8crOdRJgkuatJNRWWHM" ' +
+    'target="_blank" rel="noopener">ADP &amp; Paycom bot docs &#8599;</a>' +
+    '<span>(Historical Data Bot &middot; Daily Reports Automation)</span></div>' +
     buildFilters(HIST_FILTERS) +
     '<p style="font-size:12px;color:var(--uzio-color-text-muted);margin:0 0 12px">' +
     gotFiles + ' of ' + totalFiles + ' expected files received across ' + scope.length + ' clients. ' +
@@ -1502,6 +1519,17 @@ const AUDIT_FILTERS = {
   toggles: [{ id: 'audCensus', label: 'Missing Census only' }],
   countId: 'audCount'
 };
+/* Without this you have to go hunting through Drive for the client folder
+   before you can check anything the card claims. Two of the fourteen genuinely
+   have no Audit Files folder — that is what their note already says, so the
+   absence is stated rather than left as a missing link. */
+function auditFolderLink(recs){
+  const url = (recs.find(r => r.audit_folder_url) || {}).audit_folder_url;
+  if(!url) return '<div class="audit-card__link audit-card__link--none">No Audit Files folder</div>';
+  return '<div class="audit-card__link"><a href="' + esc(url) + '" target="_blank" ' +
+    'rel="noopener">Audit Files &#8599;</a></div>';
+}
+
 function renderAudit(rows){
   const el = panel('audit-content');
   const byClient = {}; const order = [];
@@ -1531,6 +1559,9 @@ function renderAudit(rows){
       return '<div class="audit-card"' + attrs + '><div class="audit-card__head"><b>' + esc(s.client) + '</b>' +
         '<span class="uzio-status uzio-status--neutral">' + esc(r.status) + '</span></div>' +
         '<div class="uzio-progress"><div class="uzio-progress__fill" style="width:0%"></div></div>' +
+        // These cards need the link most: they are the ones where somebody has
+        // to go and look at whether the folder is really empty.
+        auditFolderLink(s.recs) +
         (r.notes ? '<div class="audit-card__note">' + esc(r.notes) + '</div>' : '') + '</div>';
     }
     const pct = s.total ? (s.present / s.total * 100) : 0;
@@ -1544,6 +1575,7 @@ function renderAudit(rows){
       '<span class="uzio-status uzio-status--' + badge + '">' + s.present + ' / ' + s.total + '</span></div>' +
       '<div class="uzio-progress"><div class="uzio-progress__fill' + fill + '" style="width:' + pct + '%"></div></div>' +
       '<div class="audit-card__cats">' + pips + '</div>' +
+      auditFolderLink(s.recs) +
       (notes.length ? '<div class="audit-card__note">' + esc(notes.join(' · ')) + '</div>' : '') + '</div>';
   }).join('');
 
@@ -1853,21 +1885,62 @@ const OPEN_FILTERS = {
   ],
   countId: 'openCount'
 };
+/* Assigned items carry an owner and a deadline; the rest are standing
+   observations with neither, so the chips only appear when there is something
+   to show. Overdue and due-today are called out — a due date that reads the
+   same on the day after is not a deadline. */
+function openMeta(r){
+  const bits = [];
+  if(r.due_date){
+    const today = new Date().toISOString().slice(0, 10);
+    const late = r.due_date < today, now = r.due_date === today;
+    const tone = late ? 'error' : (now ? 'warning' : 'neutral');
+    bits.push('<span class="uzio-status uzio-status--' + tone + '">' +
+      (late ? 'Overdue ' : (now ? 'Due today ' : 'Due ')) + fmtDate(r.due_date) + '</span>');
+  }
+  if(r.pending_for){
+    bits.push('<span class="uzio-chip">' + esc(r.pending_for) + '</span>');
+  }
+  return bits.length ? '<span class="open-meta">' + bits.join('') + '</span>' : '';
+}
+
 function renderOpen(rows){
   const el = panel('open-content');
 
-  const groups = SEV.map(([sev, cls]) => {
-    const items = rows.filter(r => r.severity === sev);
+  /* Assigned work with a deadline is a different kind of thing from the
+     standing observations, and the severity order puts Pending last — so work
+     due tomorrow would sit below ten notes about naming mismatches. It gets its
+     own block at the top instead, soonest first. The rest still group by
+     severity, and the severity chips keep working either way because filtering
+     reads data-sev off each item, not the block it sits in. */
+  const dated = rows.filter(r => r.due_date)
+    .sort((a, b) => a.due_date < b.due_date ? -1 : (a.due_date > b.due_date ? 1 : 0));
+  const rest = rows.filter(r => !r.due_date);
+
+  const itemHtml = (r, cls) =>
+    '<div class="uzio-item uzio-item--' + cls + '" data-sev="' + esc(r.severity) + '"' +
+    ' data-text="' + esc(((r.title || '') + ' ' + (r.description || '')).toLowerCase()) + '">' +
+    '<span class="uzio-item__bar"></span>' +
+    '<div class="uzio-item__body"><div class="uzio-item__title">' + esc(r.title) +
+    openMeta(r) + '</div>' +
+    '<div class="uzio-item__desc">' + esc(r.description || '') + '</div></div></div>';
+
+  const clsFor = (sev) => (SEV.find(s => s[0] === sev) || [, 'alert'])[1];
+
+  const assigned = dated.length
+    ? '<div class="section-block" data-sev-block="__assigned">' +
+      '<div class="uzio-section-label">Assigned &middot; ' + dated.length + '</div>' +
+      '<div class="err-list">' + dated.map(r => itemHtml(r, clsFor(r.severity))).join('') +
+      '</div></div>'
+    : '';
+
+  const groups = assigned + SEV.map(([sev, cls]) => {
+    const items = rest.filter(r => r.severity === sev);
     if(!items.length) return '';
     return '<div class="section-block" data-sev-block="' + esc(sev) + '">' +
       '<div class="uzio-section-label">' + esc(sev) + ' &middot; ' + items.length + '</div>' +
-      '<div class="err-list">' + items.map(r =>
-        '<div class="uzio-item uzio-item--' + cls + '" data-sev="' + esc(sev) + '"' +
-        ' data-text="' + esc(((r.title || '') + ' ' + (r.description || '')).toLowerCase()) + '">' +
-        '<span class="uzio-item__bar"></span>' +
-        '<div class="uzio-item__body"><div class="uzio-item__title">' + esc(r.title) + '</div>' +
-        '<div class="uzio-item__desc">' + esc(r.description || '') + '</div></div></div>'
-      ).join('') + '</div></div>';
+      '<div class="err-list">' + items.map(r => itemHtml(r, cls)).join('') +
+      '</div></div>';
   }).join('');
 
   el.innerHTML = buildFilters(OPEN_FILTERS) + groups;

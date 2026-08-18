@@ -35,8 +35,30 @@ BASE = os.path.join(PROJECT, "data")
 DIR = r"C:\Users\shobhit.sharma\Downloads\PHIX-72859-onboarding-apis"
 TSV = os.path.join(BASE, "matrix_raw.tsv")
 
-# The 11 exports that produced the committed matrix_raw.tsv.
-ORIGINAL_GLOB = "Onbaording App Api runs*.csv"
+# The 11 exports that produced the committed matrix_raw.tsv, pinned by name.
+# This was a glob ("Onbaording App Api runs*.csv"), which quietly broke the
+# guard: Rohit's 18 Aug export follows the same naming, so it joined the
+# "originals" and the verify then compared 12 exports against a file built from
+# 11 and reported a logic mismatch that was really just new data. The check only
+# means anything if the input set it replays is fixed.
+ORIGINAL_FILES = [
+    "Onbaording App Api runs till 150.csv",
+    "Onbaording App Api runs from 150 and 270.csv",
+    "Onbaording App Api runs from 271 and 370.csv",
+    "Onbaording App Api runs from 371 and 530.csv",
+    "Onbaording App Api runs from 531 and 630.csv",
+    "Onbaording App Api runs from 631 and 730.csv",
+    "Onbaording App Api runs from 731 and 790.csv",
+    "Onbaording App Api runs from 791 and 900.csv",
+    "Onbaording App Api runs from 901 and 1050.csv",
+    "Onbaording App Api runs from 1051 and 1150.csv",
+    "Onbaording App Api runs from 1151.csv",
+    # The committed matrix_raw.tsv was rebuilt again once this 15 Aug export
+    # landed, so the known-good baseline is these 12 files, not the first 11.
+    # Verifying against 11 alone reported six lines "missing" that were simply
+    # this export's data.
+    "API Logs 15_08_02.csv",
+]
 
 
 def sections(row):
@@ -92,7 +114,11 @@ def read_committed():
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "--verify"
 
-    originals = sorted(glob.glob(os.path.join(DIR, ORIGINAL_GLOB)))
+    originals = sorted(os.path.join(DIR, n) for n in ORIGINAL_FILES)
+    missing = [p for p in originals if not os.path.exists(p)]
+    if missing:
+        raise SystemExit("original export missing, cannot verify: %s"
+                         % ", ".join(os.path.basename(p) for p in missing))
     every = sorted(glob.glob(os.path.join(DIR, "*.csv")))
     extra = [p for p in every if p not in originals]
 

@@ -1,0 +1,102 @@
+[
+  {
+    "id": 1,
+    "severity": "Needs action",
+    "title": "Spelman — Employee Contributions mostly failing",
+    "description": "Succeeded for only 2 of 143 records on its one 07/13 run (140 failed — no contribution mapping configured). Never re-run since, unlike every other module.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 2,
+    "severity": "Needs action",
+    "title": "Flash Hub — Census failures dominated by one error",
+    "description": "Re-ran 5 times between 06/29 and 07/31; \"work location not recognized\" still accounts for 572 of 588 outstanding failures — the dominant, unresolved error for this client.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 3,
+    "severity": "Needs action",
+    "title": "Lazo — Q2-2026 Audit Trail missing",
+    "description": "Q1 and Q3 are both present, so this looks like a skipped pull rather than \"not due yet.\"",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 4,
+    "severity": "Worth checking",
+    "title": "Lazo / North Star / Flash Hub — current-year payroll history split location",
+    "description": "2026 payroll history lives in each client's \"Payroll Setup\" folder as quarterly cuts, not alongside the 2023-2025 annual files in Historical Data. Same data, split location — worth deciding whether that's the intended pattern going forward.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 5,
+    "severity": "Worth checking",
+    "title": "Lazo — misfiled I-9 exports",
+    "description": "Two files named \"EI9 Audit Trail…\" sit loose in the Historical Data root instead of inside the Audit Trail folder — likely a typo'd/misfiled I-9 export.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 6,
+    "severity": "Worth checking",
+    "title": "InnovDel — Census naming mismatch",
+    "description": "Audit-coverage mail says Census is missing, but a Census audit file dated 08/07 exists in the folder named \"Client_Uzio_ADP_Census…\" instead of \"InnovDel_…\". Likely a naming-pattern miss in the scanner, not an actual gap — worth confirming and fixing the naming convention.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 7,
+    "severity": "Worth checking",
+    "title": "InnovDel / First Line — tracks out of sync",
+    "description": "Both show complete Audit Coverage (or near it) while Historical Data collection is barely started for them. The two tracking modules run independently — a client can look \"done\" on one and untouched on the other.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 8,
+    "severity": "Pending",
+    "title": "Spelman — Paycom checklist not yet audited item-by-item",
+    "description": "Paycom's ~44-item historical-data checklist hasn't been audited item-by-item yet, only the top-level folders and a few loose reports.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 9,
+    "severity": "Pending",
+    "title": "8 clients with no Historical Data folder yet",
+    "description": "Trek Delivery, Always More Logistics, High Distinction, Beck Logistics, CDC Logistics, Stave Delivery, Kynect Express, Express Package System — most also show empty or missing Audit Files folders. Same rollout wave, likely just not started.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  },
+  {
+    "id": 10,
+    "severity": "Pending",
+    "title": "Employee headcount per client not sourced",
+    "description": "Needs a confirmed table/column before it can go on the Overview cards.",
+    "status": "Open",
+    "date_added": "2026-08-12",
+    "due_date": null,
+    "pending_for": null
+  }
+]

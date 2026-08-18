@@ -1,0 +1,74 @@
+const HIST_FILTERS = {
+  search: { id: 'histSearch', placeholder: 'Search client…' },
+  groups: [
+    { id: 'histStatus', options: [
+      { val: 'all', label: 'Any status' },
+      { val: 'Complete', label: 'Complete', dot: DOT.good },
+      { val: 'Partial', label: 'Partial', dot: DOT.warn },
+      { val: 'Not started', label: 'Not started', dot: DOT.bad },
+      { val: 'Other', label: 'Other' }
+    ]},
+    { id: 'histVendor', options: [
+      { val: 'all', label: 'Any vendor' },
+      { val: 'ADP', label: 'ADP', dot: DOT.info },
+      { val: 'Paycom', label: 'Paycom', dot: DOT.orange }
+    ]}
+  ],
+  countId: 'histCount'
+};
+function renderHistorical(rows){
+  const el = panel('historical-content');
+  const overall = rows.filter(r => r.report_category === 'Overall');
+  const detail = rows.filter(r => r.report_category !== 'Overall');
+
+  const summary = overall.map(r =>
+    '<tr data-name="' + esc((r.client_name || '').toLowerCase()) + '"' +
+    ' data-bucket="' + esc(histBucket(r.status)) + '"' +
+    ' data-vendor="' + esc(r.vendor || 'none') + '">' +
+    '<td class="name-cell"><b>' + esc(r.client_name) + '</b></td>' +
+    '<td>' + (r.vendor ? esc(r.vendor) : NIL) + '</td>' +
+    '<td><span class="uzio-status uzio-status--' + histClass(r.status) + '">' + esc(r.status) + '</span></td>' +
+    '<td style="color:var(--uzio-color-text-muted);font-size:12.5px">' + esc(r.notes || '') + '</td></tr>'
+  ).join('');
+
+  let detailHtml = '';
+  const clients = [];
+  detail.forEach(r => { if(clients.indexOf(r.client_name) === -1) clients.push(r.client_name); });
+  if(clients.length){
+    const map = {};
+    detail.forEach(r => { map[r.client_name + '||' + r.report_category] = r; });
+    const head = '<tr><th>Report</th>' + clients.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr>';
+    const body = HIST_ORDER.map(cat =>
+      '<tr><td style="font-weight:700;font-size:12.5px">' + esc(cat) + '</td>' + clients.map(c => {
+        const r = map[c + '||' + cat];
+        if(!r) return '<td>' + NIL + '</td>';
+        return '<td><span class="uzio-status uzio-status--' + histClass(r.status) + '">' + esc(r.status) + '</span>' +
+          (r.notes ? '<div class="sub">' + esc(r.notes) + '</div>' : '') + '</td>';
+      }).join('') + '</tr>'
+    ).join('');
+    detailHtml = '<div class="section-block"><h2>Per-report breakdown</h2>' +
+      '<div class="table-shell table-shell--short"><table class="uzio-table">' +
+      '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+      '<p style="font-size:11.5px;color:var(--uzio-color-text-faint);margin:8px 0 0">' +
+      'Only clients whose folders have been walked report-by-report appear here. ' +
+      'Current-year payroll history sits in each client’s “Payroll Setup” folder as quarterly cuts, not in Historical Data.</p></div>';
+  }
+
+  el.innerHTML =
+    '<div class="section-block"><h2>Collection status by client</h2>' +
+    buildFilters(HIST_FILTERS) +
+    '<div class="table-shell table-shell--short"><table class="uzio-table" id="histTable">' +
+    '<thead><tr><th>Client</th><th>Vendor</th><th>Status</th><th>Detail</th></tr></thead>' +
+    '<tbody>' + summary + '</tbody></table></div></div>' + detailHtml;
+
+  const records = Array.from(el.querySelectorAll('#histTable tbody tr')).map(tr => ({
+    el: tr, name: tr.dataset.name, bucket: tr.dataset.bucket, vendor: tr.dataset.vendor
+  }));
+  wireFilters(el, HIST_FILTERS, records, (r, s) =>
+    (!s.q || r.name.indexOf(s.q) !== -1) &&
+    (s.histStatus === 'all' || r.bucket === s.histStatus) &&
+    (s.histVendor === 'all' || r.vendor === s.histVendor),
+    (n, total) => n + ' of ' + total + ' clients'
+  );
+}
+

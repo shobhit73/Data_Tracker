@@ -16,14 +16,16 @@ from supabase_helper import connect
 DUE = datetime.date(2026, 8, 19)      # "kal" -- today is 18 Aug 2026
 ADDED = datetime.date(2026, 8, 18)
 OWNER = "Data Team (Rohit & Shobhit)"
-SRC = ("From Rohit's chat, 17 Aug 10:00 PM: "
-       "\"ye chaaro kaam kal karne hi hai finish\".")
+# The dashboard is read by the wider team, so descriptions stay in formal
+# English. The original request was raised in Hinglish over chat; it is
+# attributed here rather than quoted verbatim.
+SRC = "Raised by Rohit Kaushik on 17 Aug 2026."
 
 ITEMS = [
     ("Stave - Emergency contact audit",
      "Run the emergency contact audit for Stave Delivery. " + SRC),
     ("Stave / First Line - documents",
-     "Documents outstanding for Stave Delivery and First Line Logistics. " + SRC),
+     "Outstanding documents for Stave Delivery and First Line Logistics. " + SRC),
     ("Flash Hub - mail Rachel",
      "Send the Flash Hub mail to Rachel. " + SRC),
     ("Stave - SOC code discussion with Priyanshu",
@@ -38,13 +40,19 @@ def main():
     cur.execute("alter table open_items add column if not exists pending_for text")
     conn.commit()
 
-    added = skipped = 0
+    added = updated = 0
     for title, desc in ITEMS:
-        # Re-running must not duplicate a hand-curated list.
-        cur.execute("select id from open_items where title = %s", (title,))
-        if cur.fetchone():
-            print("  already present, skipped:", title)
-            skipped += 1
+        # Keyed on title so re-running cannot duplicate a hand-curated list.
+        # Existing rows have their wording refreshed rather than being skipped,
+        # so a correction here actually reaches the dashboard.
+        cur.execute("select id, description from open_items where title = %s", (title,))
+        row = cur.fetchone()
+        if row:
+            if row[1] != desc:
+                cur.execute("update open_items set description = %s where id = %s",
+                            (desc, row[0]))
+                updated += 1
+                print("  reworded:", title)
             continue
         cur.execute(
             "insert into open_items (severity, title, description, status, "
@@ -54,7 +62,7 @@ def main():
         print("  added:", title)
     conn.commit()
 
-    print("\nadded %d, skipped %d" % (added, skipped))
+    print("\nadded %d, reworded %d" % (added, updated))
     cur.execute("select count(*) from open_items")
     print("open_items rows now:", cur.fetchone()[0])
     cur.execute("select due_date, severity, pending_for, title from open_items "

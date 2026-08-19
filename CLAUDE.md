@@ -162,6 +162,38 @@ class names already match the DS 1:1.
 
 ---
 
+## Open Items is writable from the browser (added 08/19/2026)
+
+Every other table on this dashboard is read-only from the page and written only by a script.
+`open_items` is the exception: the Open Items view can add an item (title, description, severity,
+assignee, due date), mark one done, and reopen it, straight from the UI. `scripts/enable_open_items_editing.py`
+is what set that up — it is idempotent, and it writes a `data/open_items_backup_<date>.json`
+snapshot before touching grants.
+
+Columns added for this: `assignee`, `completed_by`, `completed_at`. `status` is now constrained to
+`Open` / `Done`.
+
+Three things not to undo by accident:
+
+- **`anon` holds INSERT and UPDATE on `open_items`, but deliberately NOT DELETE.** Both this repo and
+  the deployed site are public, so the anon key in the page source is readable by anyone. Withholding
+  delete means a stray caller can edit rows but cannot make them vanish, and closing an item stays a
+  reversible status flip. `enable_rls.py` still describes the old select-only posture for the other
+  tables — that is accurate for them, and it does not re-lock `open_items` when re-run (it only
+  touches its own `anon_read_only` policy), but do not "tidy" the two files into agreement without
+  meaning to.
+- **`completed_by` is self-declared, not authenticated.** There is no login; the name comes from a
+  free-text "You are" box kept in the browser's localStorage. It is an attribution convention for a
+  small internal team. If it ever has to be trustworthy, the route is Supabase Auth restricted to
+  @uzio.com, which would replace the two anon write policies.
+- **The scheduled refresh still must not write to `open_items`.** That ban is about automated imports
+  clobbering hand-curation, and it is unaffected by this: a person typing into a form *is* the hand
+  curation. Same for `historical_data_checklist`, which stays script-only-never.
+
+`renderOpen` now re-runs after every write. `panel()` returns the same persistent element each time,
+so the delegated click handler is attached once behind an `el.dataset.oiWired` flag — attaching it
+per render would stack listeners and fire one PATCH per accumulated copy on the Nth click.
+
 ## How to update the dashboard
 
 1. Edit `dashboard/dsp_dashboard.html` directly for structural/content changes, or regenerate a data

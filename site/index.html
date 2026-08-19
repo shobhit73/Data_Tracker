@@ -387,6 +387,51 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 .uzio-item__body{flex:1;padding:11px 15px}
 .uzio-item__title{font-size:13.5px;font-weight:700;color:var(--uzio-color-text-heading);margin-bottom:3px}
 .uzio-item__desc{font-size:12.5px;color:var(--uzio-color-text-body);line-height:1.55}
+.uzio-item__foot{margin-top:6px;font-size:11.5px;color:var(--uzio-color-text-muted)}
+
+/* ---------- open items: add / assign / complete ---------- */
+.oi-row{display:flex;align-items:flex-start;gap:12px}
+.oi-row__main{flex:1;min-width:0}
+.uzio-item--done{opacity:.74}
+.uzio-item--done .uzio-item__title{text-decoration:line-through;
+  text-decoration-color:var(--uzio-color-text-faint)}
+.oi-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.oi-btn{height:32px;padding:0 14px;border-radius:var(--uzio-radius-sm);cursor:pointer;
+  border:1px solid var(--uzio-color-action);background:var(--uzio-color-action);color:#fff;
+  font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap}
+.oi-btn:hover:not(:disabled){background:var(--uzio-color-action-hover);border-color:var(--uzio-color-action-hover)}
+.oi-btn:focus-visible{outline:2px solid var(--uzio-color-action);outline-offset:2px}
+.oi-btn:disabled{opacity:.55;cursor:not-allowed}
+.oi-btn--ghost{background:var(--uzio-color-bg-card);color:var(--uzio-color-action)}
+.oi-btn--ghost:hover:not(:disabled){background:var(--uzio-color-action-bg-soft)}
+.oi-btn--mini{height:26px;padding:0 11px;font-size:11.5px;border-radius:var(--uzio-radius-pill)}
+.oi-me{display:flex;align-items:center;gap:7px;margin-left:auto;font-size:12px;
+  color:var(--uzio-color-text-muted)}
+.oi-form{background:var(--uzio-color-bg-card);border:1px solid var(--uzio-color-border-light);
+  border-radius:var(--uzio-radius-lg);padding:16px 18px;margin-bottom:18px}
+.oi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.oi-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.oi-field--wide{grid-column:1/-1}
+.oi-label{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--uzio-color-text-muted)}
+.oi-input,.oi-select,.oi-textarea{height:32px;padding:0 10px;font-family:inherit;font-size:13px;
+  border:1px solid var(--uzio-color-border);border-radius:var(--uzio-radius-sm);
+  color:var(--uzio-color-text-heading);background:var(--uzio-color-bg-card);min-width:0}
+/* Native date/select widgets paint their own chrome from the OS scheme, so
+   without this the picker icon goes dark-on-dark under the dark theme. */
+.oi-input[type=date],.oi-select{color-scheme:light dark}
+.oi-input--sm{height:28px;width:150px;font-size:12px}
+.oi-textarea{height:auto;min-height:58px;padding:8px 10px;line-height:1.5;resize:vertical}
+.oi-input:focus,.oi-select:focus,.oi-textarea:focus{outline:2px solid var(--uzio-color-action);
+  outline-offset:-1px;border-color:transparent}
+.oi-actions{display:flex;align-items:center;gap:12px;margin-top:14px}
+.oi-msg{font-size:12px;font-weight:600}
+.oi-msg--err{color:var(--uzio-color-error)}
+.oi-msg--ok{color:var(--uzio-color-success)}
+@media (max-width:720px){
+  .oi-me{margin-left:0;width:100%}
+  .oi-row{flex-direction:column;gap:9px}
+}
 
 
 .skeleton{padding:44px;text-align:center;color:var(--uzio-color-text-faint);font-size:13px;
@@ -596,6 +641,44 @@ async function sbGet(path){
   });
   if(!res.ok) throw new Error(path.split('?')[0] + ' → HTTP ' + res.status);
   return res.json();
+}
+/* Writes. Only open_items accepts these — the anon key holds insert + update on
+   that one table and select everywhere else, so a POST/PATCH anywhere else comes
+   back 401/403 rather than quietly succeeding. Delete is not granted at all.
+   Errors surface the body text: PostgREST puts the useful part (which check
+   constraint failed, which column does not exist) there, not in the status. */
+async function sbWrite(path, method, body){
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    method: method,
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation'
+    },
+    body: JSON.stringify(body)
+  });
+  const text = await res.text();
+  if(!res.ok){
+    let msg = text;
+    try { msg = (JSON.parse(text).message) || text; } catch(e){}
+    throw new Error('HTTP ' + res.status + (msg ? ' — ' + msg : ''));
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+/* Who is using this browser. The anon key is public and there is no login, so
+   this is a self-declared name kept in localStorage, not a verified identity —
+   it is what lands in completed_by when someone closes an item. Private-mode
+   browsers can throw on localStorage, hence the try/catch on both sides. */
+const ME_KEY = 'dspops.me';
+function getMe(){ try { return (localStorage.getItem(ME_KEY) || '').trim(); } catch(e){ return ''; } }
+function setMe(v){ try { localStorage.setItem(ME_KEY, v); } catch(e){} }
+
+async function reloadOpen(){
+  const rows = await sbGet('open_items?select=*&order=date_added.desc');
+  DATA.open = rows;
+  renderOpen(rows);
 }
 function wireChips(groupEl, onPick){
   const btns = Array.from(groupEl.querySelectorAll('.uzio-filter-chip'));
@@ -1887,6 +1970,14 @@ const SEV = [
 const OPEN_FILTERS = {
   search: { id: 'openSearch', placeholder: 'Search open items…' },
   groups: [
+    /* This group breaks the "first option shows everything" convention the other
+       filter bars follow, on purpose: completed items accumulate forever, so the
+       useful landing state is Open only, with All one click away. */
+    { id: 'openStatus', options: [
+      { val: 'Open', label: 'Open' },
+      { val: 'Done', label: 'Done', dot: DOT.good },
+      { val: 'all', label: 'All' }
+    ]},
     { id: 'openSev', options: [
       { val: 'all', label: 'All severities' },
       { val: 'Needs action', label: 'Needs action', dot: DOT.bad },
@@ -1896,27 +1987,82 @@ const OPEN_FILTERS = {
   ],
   countId: 'openCount'
 };
+const SEVERITIES = ['Needs action', 'Worth checking', 'Pending'];
 /* Assigned items carry an owner and a deadline; the rest are standing
    observations with neither, so the chips only appear when there is something
    to show. Overdue and due-today are called out — a due date that reads the
    same on the day after is not a deadline. */
 function openMeta(r){
   const bits = [];
-  if(r.due_date){
+  const done = r.status === 'Done';
+  if(done){
+    /* A completed item's deadline is history — "Overdue" on something already
+       closed reads as an outstanding problem, so the Done badge replaces it. */
+    bits.push('<span class="uzio-status uzio-status--success">Done</span>');
+  } else if(r.due_date){
     const today = new Date().toISOString().slice(0, 10);
     const late = r.due_date < today, now = r.due_date === today;
     const tone = late ? 'error' : (now ? 'warning' : 'neutral');
     bits.push('<span class="uzio-status uzio-status--' + tone + '">' +
       (late ? 'Overdue ' : (now ? 'Due today ' : 'Due ')) + fmtDate(r.due_date) + '</span>');
   }
+  if(r.assignee){
+    bits.push('<span class="uzio-chip">' + esc(r.assignee) + '</span>');
+  }
+  /* pending_for is the older, team-level owner ("Data Team (Rohit & Shobhit)")
+     carried by rows seeded from Rohit's mail; assignee is the per-person field
+     the form writes. Both show when both exist rather than one masking the other. */
   if(r.pending_for){
     bits.push('<span class="uzio-chip">' + esc(r.pending_for) + '</span>');
   }
   return bits.length ? '<span class="open-meta">' + bits.join('') + '</span>' : '';
 }
 
+/* The add-item form. Kept collapsed behind a button so the view still opens as
+   a read-only board — the form is for the occasional write, not the main event. */
+function openFormHtml(){
+  return '<div class="oi-form" id="oiForm" hidden>' +
+    '<div class="oi-grid">' +
+      '<div class="oi-field oi-field--wide">' +
+        '<label class="oi-label" for="oiTitle">Title</label>' +
+        '<input class="oi-input" id="oiTitle" maxlength="200" placeholder="What needs doing">' +
+      '</div>' +
+      '<div class="oi-field oi-field--wide">' +
+        '<label class="oi-label" for="oiDesc">Description</label>' +
+        '<textarea class="oi-textarea" id="oiDesc" placeholder="Context, client, what &quot;done&quot; looks like"></textarea>' +
+      '</div>' +
+      '<div class="oi-field">' +
+        '<label class="oi-label" for="oiSev">Severity</label>' +
+        '<select class="oi-select" id="oiSev">' +
+          SEVERITIES.map(s => '<option value="' + esc(s) + '">' + esc(s) + '</option>').join('') +
+        '</select>' +
+      '</div>' +
+      '<div class="oi-field">' +
+        '<label class="oi-label" for="oiAssignee">Assignee</label>' +
+        '<input class="oi-input" id="oiAssignee" maxlength="80" placeholder="Who owns it">' +
+      '</div>' +
+      '<div class="oi-field">' +
+        '<label class="oi-label" for="oiDue">Due date</label>' +
+        '<input class="oi-input" type="date" id="oiDue">' +
+      '</div>' +
+    '</div>' +
+    '<div class="oi-actions">' +
+      '<button class="oi-btn" id="oiSave">Add item</button>' +
+      '<button class="oi-btn oi-btn--ghost" id="oiCancel">Cancel</button>' +
+      '<span class="oi-msg" id="oiMsg"></span>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderOpen(rows){
   const el = panel('open-content');
+
+  /* Completed items leave the working set entirely and collect in their own
+     block at the bottom, newest first — otherwise a closed item would keep
+     showing up under its old severity heading as if it were still live. */
+  const live = rows.filter(r => r.status !== 'Done');
+  const done = rows.filter(r => r.status === 'Done')
+    .sort((a, b) => String(b.completed_at || '').localeCompare(String(a.completed_at || '')));
 
   /* Assigned work with a deadline is a different kind of thing from the
      standing observations, and the severity order puts Pending last — so work
@@ -1924,56 +2070,178 @@ function renderOpen(rows){
      own block at the top instead, soonest first. The rest still group by
      severity, and the severity chips keep working either way because filtering
      reads data-sev off each item, not the block it sits in. */
-  const dated = rows.filter(r => r.due_date)
+  const dated = live.filter(r => r.due_date)
     .sort((a, b) => a.due_date < b.due_date ? -1 : (a.due_date > b.due_date ? 1 : 0));
-  const rest = rows.filter(r => !r.due_date);
+  const rest = live.filter(r => !r.due_date);
 
-  const itemHtml = (r, cls) =>
-    '<div class="uzio-item uzio-item--' + cls + '" data-sev="' + esc(r.severity) + '"' +
-    ' data-text="' + esc(((r.title || '') + ' ' + (r.description || '')).toLowerCase()) + '">' +
-    '<span class="uzio-item__bar"></span>' +
-    '<div class="uzio-item__body"><div class="uzio-item__title">' + esc(r.title) +
-    openMeta(r) + '</div>' +
-    '<div class="uzio-item__desc">' + esc(r.description || '') + '</div></div></div>';
+  const itemHtml = (r, cls) => {
+    const isDone = r.status === 'Done';
+    const foot = isDone
+      ? '<div class="uzio-item__foot">Completed by ' + esc(r.completed_by || 'someone unnamed') +
+        (r.completed_at ? ' on ' + esc(fmtDatePlain(String(r.completed_at).slice(0, 10))) : '') +
+        '</div>'
+      : '';
+    const btn = isDone
+      ? '<button class="oi-btn oi-btn--ghost oi-btn--mini" data-reopen="' + r.id + '">Reopen</button>'
+      : '<button class="oi-btn oi-btn--mini" data-done="' + r.id + '">Mark as done</button>';
+    return '<div class="uzio-item uzio-item--' + cls + (isDone ? ' uzio-item--done' : '') + '"' +
+      ' data-sev="' + esc(r.severity) + '" data-status="' + esc(r.status) + '"' +
+      ' data-text="' + esc(((r.title || '') + ' ' + (r.description || '') + ' ' +
+        (r.assignee || '') + ' ' + (r.completed_by || '')).toLowerCase()) + '">' +
+      '<span class="uzio-item__bar"></span>' +
+      '<div class="uzio-item__body oi-row">' +
+        '<div class="oi-row__main">' +
+          '<div class="uzio-item__title">' + esc(r.title) + openMeta(r) + '</div>' +
+          '<div class="uzio-item__desc">' + esc(r.description || '') + '</div>' + foot +
+        '</div>' + btn +
+      '</div></div>';
+  };
 
   const clsFor = (sev) => (SEV.find(s => s[0] === sev) || [, 'alert'])[1];
-
-  const assigned = dated.length
-    ? '<div class="section-block" data-sev-block="__assigned">' +
-      '<div class="uzio-section-label">Assigned &middot; ' + dated.length + '</div>' +
-      '<div class="err-list">' + dated.map(r => itemHtml(r, clsFor(r.severity))).join('') +
+  const block = (key, label, items) => items.length
+    ? '<div class="section-block" data-sev-block="' + esc(key) + '">' +
+      '<div class="uzio-section-label">' + esc(label) + ' &middot; ' + items.length + '</div>' +
+      '<div class="err-list">' + items.map(r => itemHtml(r, clsFor(r.severity))).join('') +
       '</div></div>'
     : '';
 
-  const groups = assigned + SEV.map(([sev, cls]) => {
-    const items = rest.filter(r => r.severity === sev);
-    if(!items.length) return '';
-    return '<div class="section-block" data-sev-block="' + esc(sev) + '">' +
-      '<div class="uzio-section-label">' + esc(sev) + ' &middot; ' + items.length + '</div>' +
-      '<div class="err-list">' + items.map(r => itemHtml(r, cls)).join('') +
-      '</div></div>';
-  }).join('');
+  const groups =
+    block('__assigned', 'Assigned', dated) +
+    SEV.map(([sev]) => block(sev, sev, rest.filter(r => r.severity === sev))).join('') +
+    block('__done', 'Done', done);
 
-  el.innerHTML = buildFilters(OPEN_FILTERS) + groups;
+  const me = getMe();
+  const bar =
+    '<div class="oi-bar">' +
+      '<button class="oi-btn" id="oiToggle">+ Add item</button>' +
+      '<div class="oi-me">' +
+        '<label for="oiMe">You are</label>' +
+        '<input class="oi-input oi-input--sm" id="oiMe" maxlength="60" placeholder="Your name"' +
+          ' value="' + esc(me) + '">' +
+      '</div>' +
+    '</div>';
+
+  el.innerHTML = bar + openFormHtml() + buildFilters(OPEN_FILTERS) + groups;
 
   const records = Array.from(el.querySelectorAll('.uzio-item')).map(it => ({
-    el: it, sev: it.dataset.sev, text: it.dataset.text
+    el: it, sev: it.dataset.sev, status: it.dataset.status, text: it.dataset.text
   }));
   wireFilters(el, OPEN_FILTERS, records, (r, s) =>
     (!s.q || r.text.indexOf(s.q) !== -1) &&
-    (s.openSev === 'all' || r.sev === s.openSev),
+    (s.openSev === 'all' || r.sev === s.openSev) &&
+    (s.openStatus === 'all' || r.status === s.openStatus),
     (n, total) => n + ' of ' + total + ' items'
   );
 
-  // A severity heading with every item filtered out would just be a dangling
-  // label, so hide the whole block once its list empties.
-  const syncBlocks = () => el.querySelectorAll('[data-sev-block]').forEach(block => {
-    const any = Array.from(block.querySelectorAll('.uzio-item')).some(i => i.style.display !== 'none');
-    block.style.display = any ? '' : 'none';
+  wireOpenOnce(el);
+  syncOpenBlocks(el);
+  wireOpenForm(el);
+}
+
+// A severity heading with every item filtered out would just be a dangling
+// label, so hide the whole block once its list empties.
+function syncOpenBlocks(el){
+  el.querySelectorAll('[data-sev-block]').forEach(b => {
+    const any = Array.from(b.querySelectorAll('.uzio-item')).some(i => i.style.display !== 'none');
+    b.style.display = any ? '' : 'none';
   });
-  el.addEventListener('input', syncBlocks);
-  el.addEventListener('click', syncBlocks);
-  syncBlocks();
+}
+
+function openMsg(el, text, kind){
+  const msg = el.querySelector('#oiMsg');
+  if(!msg) return;
+  msg.textContent = text || '';
+  msg.className = 'oi-msg' + (kind ? ' oi-msg--' + kind : '');
+}
+
+/* Listeners that live on the panel itself rather than on its contents.
+   renderOpen now runs again after every write, and panel() hands back the SAME
+   element each time — so attaching here on each render would stack a second,
+   third, nth copy of these handlers, and one "Mark as done" click would fire a
+   PATCH per accumulated listener. Attach once, keyed off a flag on the node,
+   and look everything up at event time so nothing closes over a stale render. */
+function wireOpenOnce(el){
+  if(el.dataset.oiWired) return;
+  el.dataset.oiWired = '1';
+
+  el.addEventListener('input', () => syncOpenBlocks(el));
+  el.addEventListener('click', () => syncOpenBlocks(el));
+
+  el.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-done],[data-reopen]');
+    if(!btn || btn.disabled) return;
+    const doneId = btn.dataset.done, reopenId = btn.dataset.reopen;
+    const meInput = el.querySelector('#oiMe');
+    const name = (meInput && meInput.value.trim()) || '';
+
+    // Closing an item records who did it, so it cannot go in nameless.
+    if(doneId && !name){
+      openMsg(el, 'Enter your name in the "You are" box first — it is recorded as who closed the item.', 'err');
+      el.querySelector('#oiForm').hidden = false;
+      if(meInput) meInput.focus();
+      return;
+    }
+    if(doneId) setMe(name);
+
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = doneId ? 'Saving…' : 'Reopening…';
+    const body = doneId
+      ? { status: 'Done', completed_by: name, completed_at: new Date().toISOString() }
+      : { status: 'Open', completed_by: null, completed_at: null };
+    try {
+      await sbWrite('open_items?id=eq.' + (doneId || reopenId), 'PATCH', body);
+      await reloadOpen();
+    } catch(err){
+      btn.disabled = false;
+      btn.textContent = original;
+      openMsg(el, 'Could not update: ' + err.message, 'err');
+      el.querySelector('#oiForm').hidden = false;
+    }
+  });
+}
+
+/* Wiring for the controls rebuilt on every render. These nodes are new each
+   time and the old ones are discarded with their listeners, so no guard needed. */
+function wireOpenForm(el){
+  const form = el.querySelector('#oiForm');
+  const meInput = el.querySelector('#oiMe');
+
+  meInput.addEventListener('input', () => setMe(meInput.value.trim()));
+
+  el.querySelector('#oiToggle').addEventListener('click', () => {
+    form.hidden = !form.hidden;
+    openMsg(el, '');
+    if(!form.hidden) el.querySelector('#oiTitle').focus();
+  });
+  el.querySelector('#oiCancel').addEventListener('click', () => {
+    form.hidden = true;
+    openMsg(el, '');
+  });
+
+  const saveBtn = el.querySelector('#oiSave');
+  saveBtn.addEventListener('click', async () => {
+    const titleEl = el.querySelector('#oiTitle');
+    const title = titleEl.value.trim();
+    if(!title){ openMsg(el, 'A title is required.', 'err'); titleEl.focus(); return; }
+    const payload = {
+      title: title,
+      description: el.querySelector('#oiDesc').value.trim() || null,
+      severity: el.querySelector('#oiSev').value,
+      assignee: el.querySelector('#oiAssignee').value.trim() || null,
+      due_date: el.querySelector('#oiDue').value || null,
+      status: 'Open'
+    };
+    saveBtn.disabled = true;
+    openMsg(el, 'Saving…');
+    try {
+      await sbWrite('open_items', 'POST', payload);
+      await reloadOpen();   // re-renders: this handler's nodes are gone after here
+    } catch(err){
+      saveBtn.disabled = false;
+      openMsg(el, 'Could not save: ' + err.message, 'err');
+    }
+  });
 }
 
 /* ==================== DATA COVERAGE ====================

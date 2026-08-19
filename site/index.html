@@ -346,6 +346,10 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
   .hist-head{grid-template-columns:12px minmax(0,1fr) 62px 116px 90px}
   .hist-head__meta,.hist-head__bar{display:none}
 }
+/* Marks a mail-reported total that does not agree with the row count. Both
+   numbers stay on screen — which one is right is not for the page to decide. */
+.doc-mismatch{color:var(--uzio-color-warning);font-weight:700;
+  text-decoration:underline dotted;text-underline-offset:2px;cursor:help}
 .detail-access{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px;
   font-size:12px;line-height:1.6;color:var(--uzio-color-text-body)}
 .detail-access b{color:var(--uzio-color-text-heading)}
@@ -1840,55 +1844,143 @@ function num(n){ return n == null ? NIL : '<span class="tnum">' + Number(n).toLo
 const DOC_FILTERS = {
   search: { id: 'docSearch', placeholder: 'Search client…' },
   groups: [
+    // Filters on what prod holds, not on what the mail claimed: the mail
+    // status is shown in the table but it is not the thing to act on.
     { id: 'docStatus', options: [
-      { val: 'all', label: 'Any status' },
-      { val: 'Complete', label: 'Complete', dot: DOT.good },
-      { val: 'Completed with issues', label: 'With issues', dot: DOT.warn },
-      { val: 'notdone', label: 'Not done', dot: DOT.bad },
-      { val: 'Nothing to transfer', label: 'Nothing to transfer' }
+      { val: 'all', label: 'Any coverage' },
+      { val: 'full', label: '95%+', dot: DOT.good },
+      { val: 'most', label: '50–94%', dot: DOT.warn },
+      { val: 'low', label: 'Under 50%', dot: DOT.bad },
+      { val: 'none', label: 'No documents', dot: DOT.bad },
+      { val: 'nodata', label: 'No prod match' }
     ]}
   ],
   toggles: [{ id: 'docFailed', label: 'Has failed docs' }],
   countId: 'docCount'
 };
+/* Every client, ordered by what prod actually holds, with the transfer mail
+   alongside as a second opinion.
+
+   This used to be exactly the 20 clients someone had mailed about, which made
+   it a record of announcements rather than of documents. The mails give no
+   count at all for InnovDel, JDW or Skyland, one reported Success=0 and
+   corrected itself minutes later, and none of them can say what is in the
+   system today rather than what was uploaded that morning. A client nobody
+   mailed about simply did not appear — which is how Goro (1,814 employees) and
+   Secure Transit (1,709) sat at zero documents without surfacing anywhere.
+
+   So the number comes from prod (client_document_counts, counted off the
+   `form` table) and the mail sits next to it, not in place of it. Where the
+   two disagree, the disagreement is the point. */
 function renderDocuments(rows){
   const el = panel('documents-content');
   const byStatus = (s) => rows.filter(r => r.status === s).length;
 
-  const order = ['Blocked', 'In progress', 'Completed with issues', 'Complete', 'Nothing to transfer'];
-  const sorted = rows.slice().sort((a, b) => {
-    const d = order.indexOf(a.status) - order.indexOf(b.status);
-    return d !== 0 ? d : (b.transfer_date || '').localeCompare(a.transfer_date || '');
+  // Attach each mail to its client. A mail matching nothing is still shown
+  // rather than dropped, so nothing disappears silently in the merge.
+  const claimed = {};
+  const merged = (DATA.clients || []).map(c => {
+    const mail = rows.find(r => sameClient(r.client_name, c.dsp_name));
+    if(mail) claimed[mail.id] = true;
+    return { name: c.dsp_name, mail: mail || null,
+             counts: (DATA.docCounts || {})[c.dsp_short_code] || null };
+  }).concat(rows.filter(r => !claimed[r.id])
+                .map(m => ({ name: m.client_name, mail: m, counts: null })));
+
+  // Documents descending: the page answers "who has how much", so a client at
+  // zero with a thousand employees belongs where the numbers run out rather
+  // than buried alphabetically. No prod match sorts last — that is a different
+  // state from zero, not a smaller one.
+  merged.sort((a, b) => {
+    const ad = a.counts ? a.counts.documents : -1, bd = b.counts ? b.counts.documents : -1;
+    return bd - ad || a.name.localeCompare(b.name);
   });
 
-  const body = sorted.map(r => {
+  const body = merged.map(m => {
+    const r = m.mail, d = m.counts;
     const breakdown = [];
-    if(r.fail_filename_format) breakdown.push('filename ' + r.fail_filename_format);
-    if(r.fail_employee_not_found) breakdown.push('no EE ' + r.fail_employee_not_found);
-    if(r.fail_unsupported_type) breakdown.push('bad type ' + r.fail_unsupported_type);
-    if(r.employees_skipped) breakdown.push(Number(r.employees_skipped).toLocaleString() + ' employees skipped');
+    if(r){
+      if(r.fail_filename_format) breakdown.push('filename ' + r.fail_filename_format);
+      if(r.fail_employee_not_found) breakdown.push('no EE ' + r.fail_employee_not_found);
+      if(r.fail_unsupported_type) breakdown.push('bad type ' + r.fail_unsupported_type);
+      if(r.employees_skipped) breakdown.push(Number(r.employees_skipped).toLocaleString() + ' employees skipped');
+    }
     const links = [];
-    if(r.jira_id) links.push('<a href="https://jira.uzio.com/browse/' + esc(r.jira_id) + '" target="_blank" rel="noopener">' + esc(r.jira_id) + '</a>');
-    if(r.drive_folder_url) links.push('<a href="' + esc(r.drive_folder_url) + '" target="_blank" rel="noopener">Drive</a>');
-    const bucket = (r.status === 'Blocked' || r.status === 'In progress') ? 'notdone' : r.status;
-    return '<tr data-name="' + esc((r.client_name || '').toLowerCase()) + '"' +
-      ' data-bucket="' + esc(bucket) + '" data-failed="' + (r.failed_docs ? '1' : '0') + '">' +
-      '<td class="name-cell"><b title="' + esc(r.client_name) + '">' + esc(r.client_name) + '</b>' +
+    if(r && r.jira_id) links.push('<a href="https://jira.uzio.com/browse/' + esc(r.jira_id) +
+      '" target="_blank" rel="noopener">' + esc(r.jira_id) + '</a>');
+    if(r && r.drive_folder_url) links.push('<a href="' + esc(r.drive_folder_url) +
+      '" target="_blank" rel="noopener">Drive</a>');
+
+    /* Buckets are judged on prod, not on the mail: that is the state someone
+       can act on. "No prod match" is its own bucket so it cannot be mistaken
+       for a client that genuinely has nothing.
+
+       The denominator is every employee, not just the active ones. Documents
+       load for leavers too — Falcon has 705 of 711 covered against 24 active
+       staff — so measuring against active headcount produces percentages like
+       2,938% and tells you nothing. Nobody reaches a true 100%, so 95% is
+       treated as done. */
+    const pct = d && d.total_employees
+      ? Math.round(d.employees_with_docs / d.total_employees * 100) : 0;
+    let bucket, label;
+    if(!d){ bucket = 'nodata'; label = 'No prod match'; }
+    else if(d.documents === 0){ bucket = 'none'; label = 'None'; }
+    else if(pct >= 95){ bucket = 'full'; label = pct + '% covered'; }
+    else if(pct >= 50){ bucket = 'most'; label = pct + '% covered'; }
+    else { bucket = 'low'; label = pct + '% covered'; }
+    const sev = { none: 'error', low: 'error', most: 'warning', full: 'success',
+                  nodata: 'neutral' }[bucket];
+
+    const docCell = d
+      ? '<b>' + Number(d.documents).toLocaleString() + '</b>' +
+        '<div class="sub">' + Number(d.employees_with_docs).toLocaleString() + ' of ' +
+        Number(d.total_employees).toLocaleString() + ' employees</div>'
+      : NIL;
+
+    // The mail's own figure earns its column only where it disagrees with the
+    // count, or where there is no count to compare it against.
+    const reported = r && r.total_docs != null
+      ? (d && Number(r.total_docs) !== Number(d.documents)
+          ? '<span class="doc-mismatch" title="The transfer mail reported a different number">' +
+            num(r.total_docs) + '</span>'
+          : num(r.total_docs))
+      : NIL;
+
+    return '<tr data-name="' + esc((m.name || '').toLowerCase()) + '"' +
+      ' data-bucket="' + bucket + '" data-failed="' + (r && r.failed_docs ? '1' : '0') + '">' +
+      '<td class="name-cell"><b title="' + esc(m.name) + '">' + esc(m.name) + '</b>' +
         (links.length ? '<div class="sub">' + links.join(' &middot; ') + '</div>' : '') + '</td>' +
-      '<td><span class="uzio-status uzio-status--' + (DOC_STATUS_CLASS[r.status] || 'neutral') + '">' + esc(r.status) + '</span></td>' +
-      '<td>' + fmtDate(r.transfer_date) + '</td>' +
-      '<td>' + num(r.total_docs) + '</td>' +
-      '<td>' + (r.failed_docs != null ? num(r.failed_docs) : NIL) + '</td>' +
+      '<td><span class="uzio-status uzio-status--' + sev + '">' + label + '</span></td>' +
+      '<td class="tnum">' + docCell + '</td>' +
+      '<td>' + (r
+        ? '<span class="uzio-status uzio-status--' + (DOC_STATUS_CLASS[r.status] || 'neutral') + '">' +
+          esc(r.status) + '</span><div class="sub">' + fmtDate(r.transfer_date) + '</div>'
+        : '<span class="sub">no transfer mail</span>') + '</td>' +
+      '<td class="tnum">' + reported + '</td>' +
+      '<td class="tnum">' + (r && r.failed_docs != null ? num(r.failed_docs) : NIL) + '</td>' +
       '<td class="sub" style="font-size:11.5px">' + (breakdown.length ? esc(breakdown.join(' · ')) : NIL) + '</td>' +
-      '<td style="max-width:420px;white-space:normal;font-size:12px;color:var(--uzio-color-text-muted);line-height:1.5">' +
-        esc(r.notes || '') + '</td>' +
+      '<td style="max-width:340px;white-space:normal;font-size:12px;color:var(--uzio-color-text-muted);line-height:1.5">' +
+        esc((r && r.notes) || '') + '</td>' +
     '</tr>';
   }).join('');
 
+  const counted = merged.filter(m => m.counts);
+  const totalDocs = counted.reduce((n, m) => n + m.counts.documents, 0);
+  const zero = counted.filter(m => m.counts.documents === 0);
+  const checked = counted.length ? counted[0].counts.checked_at : null;
+
   el.innerHTML =
     buildFilters(DOC_FILTERS) +
+    '<p style="font-size:12px;color:var(--uzio-color-text-muted);margin:0 0 12px">' +
+      '<b>' + totalDocs.toLocaleString() + '</b> employee documents in Uzio across <b>' +
+      counted.length + '</b> clients' +
+      (zero.length ? ', and <b>' + zero.length + '</b> of them have none at all' : '') +
+      '. Counted from prod' + (checked ? ' at ' + esc(String(checked).slice(0, 16).replace('T', ' ')) : '') +
+      ', not taken from the transfer mails — an upload runs for hours, so a client ' +
+      'can legitimately be part-way through.</p>' +
     '<div class="table-shell"><table class="uzio-table" id="docTable">' +
-    '<thead><tr><th>Client</th><th>Status</th><th>Date</th><th>Total docs</th><th>Failed</th>' +
+    '<thead><tr><th>Client</th><th>Coverage</th><th>Documents in Uzio</th>' +
+    '<th>Transfer mail</th><th>Reported</th><th>Failed</th>' +
     '<th>Failure breakdown</th><th>Notes</th></tr></thead><tbody>' + body + '</tbody></table></div>';
 
   const records = Array.from(el.querySelectorAll('#docTable tbody tr')).map(tr => ({
@@ -1901,7 +1993,8 @@ function renderDocuments(rows){
     (n, total) => n + ' of ' + total + ' clients'
   );
 
-  return { clients: rows.length, notDone: byStatus('Blocked') + byStatus('In progress') };
+  return { clients: counted.length, notDone: byStatus('Blocked') + byStatus('In progress'),
+           zero: zero.length };
 }
 
 /* ==================== API ACTIVITY ==================== */
@@ -2927,8 +3020,17 @@ async function loadAll(){
     }).catch(fail('historical-content')),
     sbGet('audit_coverage?select=*&order=client_name.asc')
       .then(r => { DATA.audit = r; renderAudit(r); }).catch(fail('audit-content')),
-    sbGet('document_transfer?select=*&order=client_name.asc')
-      .then(r => { DATA.documents = r; out.docs = renderDocuments(r); }).catch(fail('documents-content')),
+    // The mail record and the row count are two different facts, so both are
+    // fetched and shown side by side rather than one standing in for the other.
+    Promise.all([
+      sbGet('document_transfer?select=*&order=client_name.asc'),
+      sbGet('client_document_counts?select=*')
+    ]).then(([transfer, counts]) => {
+      DATA.documents = transfer;
+      DATA.docCounts = {};
+      (counts || []).forEach(c => { DATA.docCounts[c.dsp_short_code] = c; });
+      out.docs = renderDocuments(transfer);
+    }).catch(fail('documents-content')),
     sbGet('api_activity_runs?select=*&order=client_name.asc')
       .then(r => { DATA.api = r; out.api = renderApi(); }).catch(fail('api-content')),
     sbGet('client_data_coverage?select=*&order=company_name.asc')

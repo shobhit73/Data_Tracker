@@ -6,6 +6,9 @@ What it does:
   2. populate_work_locations - refresh every matched DSP's work locations
   3. populate_data_coverage  - count how many employees actually have a payment
                                method / emergency contact yet
+  4. populate_load_history    - when employees were added or left, and by whom
+  5. populate_document_counts - how many employee documents each client has,
+                                counted rather than taken from the transfer mail
 
 What it deliberately does NOT touch:
   - open_items and historical_data_checklist  -> human-owned, no script writes
@@ -24,6 +27,7 @@ STEPS = [
     ("populate_work_locations", "Refresh work locations from prod"),
     ("populate_data_coverage", "Refresh payment-method / emergency-contact / licence coverage"),
     ("populate_load_history", "Refresh when employees were added or left, and by whom"),
+    ("populate_document_counts", "Count the employee documents actually in Uzio, per client"),
 ]
 
 

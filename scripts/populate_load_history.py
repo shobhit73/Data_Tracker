@@ -29,6 +29,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pq_helper
+from psycopg2.extras import execute_values
 from supabase_helper import connect
 
 DDL = """
@@ -172,7 +173,6 @@ def main():
     cur.execute("delete from client_load_events where dsp_short_code = any(%s)", (codes,))
     deleted = cur.rowcount
 
-    written = 0
     merged = {}
     for r in all_rows:
         code = code_by_fein.get(r["fein_norm"])
@@ -187,13 +187,18 @@ def main():
         else:
             merged[key] = [int(r["employees"]), atype]
 
-    for (code, day, kind, actor), (n, atype) in merged.items():
-        cur.execute(
-            "insert into client_load_events "
-            "(dsp_short_code, event_date, kind, actor, actor_type, employees) "
-            "values (%s,%s,%s,%s,%s,%s)",
-            (code, day, kind, actor, atype, n))
-        written += 1
+    # One execute_values round-trip instead of ~3k single-row INSERTs: the
+    # Supabase pooler was closing the connection partway through the per-row
+    # loop, which rolled back the delete above and left the table stale.
+    payload = [(code, day, kind, actor, atype, n)
+               for (code, day, kind, actor), (n, atype) in merged.items()]
+    execute_values(
+        cur,
+        "insert into client_load_events "
+        "(dsp_short_code, event_date, kind, actor, actor_type, employees) "
+        "values %s",
+        payload, page_size=1000)
+    written = len(payload)
     conn.commit()
 
     print(f"client_load_events: deleted {deleted}, inserted {written}")

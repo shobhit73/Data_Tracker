@@ -1,27 +1,34 @@
-"""Add the items raised in the 'Audit Data Request' chat, due 22 Aug.
+"""The open items raised in the 'Audit Data Request' chat and then escalated by
+email on 19 Aug, due 22 Aug.
 
-Each was corroborated against our own tables before writing, so the
-descriptions state evidence rather than only repeating the request:
+This script is the single source of truth for these three items: re-running it
+re-asserts the current wording, severity and assignee rather than layering a
+second script on top. RENAMES carries titles that changed after an item was
+first written, so the keyed lookup finds the existing row instead of inserting
+a duplicate alongside it.
 
-  InnovDel   - historical_data_checklist already reads Timecards 0/3 and Audit
-               Trail 0/7 while Payroll History (2023-2025 3/3, 2026 present) and
-               Time Off (4/4) are complete. The ADP reports themselves ran fine
-               on 08/18 and returned 0 records, so this is "no data in ADP",
-               not "report failed".
+Each description states evidence checked against our own tables, not just the
+request:
+
+  InnovDel   - historical_data_checklist reads Timecards 0/3 and Audit Trail
+               0/7 while Payroll History (2023-2025 3/3, 2026 present) and Time
+               Off (4/4) are complete. The ADP reports ran fine on 08/18 and
+               returned 0 records, so this is "no data in ADP", not "report
+               failed".
   High Dist. - historical_data_checklist reads "Not started - No Historical Data
                folder yet" (checked 08/11), and api_activity_runs shows only
                EmployeeCensus has ever run (08/17). Time Tracking went live
                08/16; payroll is due live 08/28.
-  First Line - document_transfer has no row for this client and open item 12
-               ("Stave / First Line - documents") is still open, so the ADP
-               export error is the blocker underneath work already tracked
-               rather than a separate strand. client_overview gives Tierra as
-               the implementor, which matches who Rohit addressed in the chat.
+  First Line - historical_data_checklist reads Payroll History 3/3 for 2023-2025
+               with 2026 missing, Time Off 0/4, Timecards 0/3, Audit Trail 0/7,
+               I-9 missing. document_transfer still has no row for this client
+               and open item 12 ("Stave / First Line - documents") is still
+               open, so this sits underneath work already tracked.
 
-Severity is set per item rather than uniformly: InnovDel is genuinely waiting on
-a client answer (Pending), whereas High Distinction has nothing started at all
-with payroll live in nine days, and First Line has a concrete next step that
-needs nobody's permission (both Needs action).
+All three are now Needs action, which is the top severity the schema allows and
+the one the dashboard renders in critical red. Two were raised with the client
+by email on 19 Aug, so they are no longer merely noted -- somebody is waiting on
+an answer against a live payroll date.
 
 Same conventions as add_workers_comp_items: formal English (the dashboard is
 read by the wider team), keyed on title so a re-run cannot duplicate, and
@@ -35,22 +42,34 @@ DUE = datetime.date(2026, 8, 22)
 ADDED = datetime.date(2026, 8, 19)
 OWNER = "Implementation"
 
+# old title -> current title, for items retitled after they were first written.
+RENAMES = {
+    "First Line - ADP document export fails with 400":
+        "First Line - ADP historical reports blocked, access requested",
+}
+
 # (severity, assignee, title, description)
 ITEMS = [
     (
-        "Pending",
+        "Needs action",
         "Mercedes Hallback",
         "InnovDel - Timecards and Audit Trail not in ADP",
-        "Confirm with the client whether ADP holds any timecard data for InnovDel, "
-        "and what it is filed under. The four ADP timecard reports run on 08/18 "
-        "(06:35-06:46 AM) all completed successfully but returned 0 records, so the "
-        "reports are working and the data is absent. Our historical checklist "
-        "matches: Timecards 0/3 and Audit Trail 0/7, while Payroll History "
-        "(2023-2025 3/3, 2026 present) and Time Off (4/4) are complete. That "
-        "pattern points to InnovDel never having used ADP's time and attendance "
-        "module rather than a date-range or permission problem, which would mean "
-        "no report setting can recover the data. Shruti asked for cuzio to be "
-        "included when confirming with the client.",
+        "Raised with the client: email to Mercedes Hallback on 19 Aug 2026, copying "
+        "Shruti, Priyanshu and Rohit, asking why no timecard data is in ADP and "
+        "listing Timecard Report with Supervisor Approval, Timecard Report with "
+        "Notes, and Timecard Exception Report, with a screenshot attached. Now "
+        "waiting on the client's answer through Mercedes. "
+        "The four ADP timecard reports run on 08/18 (06:35-06:46 AM) all completed "
+        "successfully but returned 0 records, so the reports are working and the "
+        "data is absent. Our historical checklist matches: Timecards 0/3 and Audit "
+        "Trail 0/7, while Payroll History (2023-2025 3/3, 2026 present) and Time Off "
+        "(4/4) are complete. That pattern points to InnovDel never having used ADP's "
+        "time and attendance module rather than a date-range or permission problem, "
+        "which would mean no report setting can recover the data. "
+        "Still not raised with the client: the 19 Aug email covered only the three "
+        "timecard reports, so Audit Trail (0/7) and I-9 (missing) for this client "
+        "remain outstanding and unasked. Shruti asked for cuzio to be included when "
+        "confirming with the client.",
     ),
     (
         "Needs action",
@@ -63,25 +82,32 @@ ITEMS = [
         "EmployeeCensus has ever run (08/17, by Mercedes). Time Tracking went live "
         "08/16 and payroll is due live 08/28, so the collection window is short. "
         "Treat a missing report as an ADP problem only after the folder and the "
-        "collection start are confirmed.",
+        "collection start are confirmed. Unlike InnovDel and First Line, this one "
+        "has not yet been raised with the client by email.",
     ),
     (
         "Needs action",
         "Tierra Williams",
-        "First Line - ADP document export fails with 400",
-        "Downloading documents for First Line Logistics from ADP Export Documents "
-        "returns '400 Bad Request - Request Header Or Cookie Too Large' from nginx. "
-        "Read that error before treating this as an access problem: it means the "
-        "request headers sent by the browser exceeded the server's size limit, "
-        "which is almost always accumulated cookies on the workforcenow.adp.com "
-        "domain. A permissions failure would come back as 401 or 403, or as an ADP "
-        "page saying so, not as a 400 from nginx. So the first step sits with "
-        "whoever hit the error (Rohit): clear cookies for that domain, or retry in "
-        "an incognito window or a different browser profile. Only if a clean "
-        "session still fails is it worth asking the client to confirm access, "
-        "which is what the chat currently proposes. This is the blocker behind "
-        "the existing 'Stave / First Line - documents' item; document_transfer "
-        "still has no row for this client.",
+        "First Line - ADP historical reports blocked, access requested",
+        "Raised with the client: email to Tierra Williams on 19 Aug 2026, copying "
+        "Shruti, Priyanshu and Rohit, asking the client for full access to the ADP "
+        "account, with screenshots. Five reports listed: Audit Trail (not present), "
+        "Employee Lien Detail (returns an error), and the three Timecard reports "
+        "- Supervisor Approval, With Notes, and Exception - all not found. Now "
+        "waiting on the client's answer through Tierra. "
+        "Two things that request does not cover. First, the separate '400 Bad "
+        "Request - Request Header Or Cookie Too Large' Rohit hit on ADP Export "
+        "Documents: nginx returns that when the browser's headers exceed the "
+        "server's size limit, which is accumulated cookies on workforcenow.adp.com, "
+        "not a permissions failure. Granting access will not clear it; it needs a "
+        "cookie clear or a clean browser profile by whoever hit it. Second, if the "
+        "timecard reports turn out to be empty rather than inaccessible, the answer "
+        "will be InnovDel's: the client may never have used ADP time and attendance, "
+        "and no access grant recovers data that was never recorded. "
+        "Historical checklist for this client reads Payroll History 3/3 for "
+        "2023-2025 with 2026 missing, Time Off 0/4, Timecards 0/3, Audit Trail 0/7, "
+        "I-9 missing. This is also the blocker behind the existing 'Stave / First "
+        "Line - documents' item; document_transfer still has no row for this client.",
     ),
 ]
 
@@ -89,7 +115,18 @@ ITEMS = [
 def main():
     conn = connect()
     cur = conn.cursor()
-    added = updated = 0
+    renamed = added = updated = 0
+
+    for old_title, new_title in RENAMES.items():
+        cur.execute("select id from open_items where title = %s", (new_title,))
+        if cur.fetchone():
+            continue  # already renamed on an earlier run
+        cur.execute(
+            "update open_items set title = %s where title = %s",
+            (new_title, old_title))
+        if cur.rowcount:
+            renamed += 1
+            print("  renamed: %r -> %r" % (old_title, new_title))
 
     for severity, assignee, title, desc in ITEMS:
         cur.execute(
@@ -115,7 +152,7 @@ def main():
 
     conn.commit()
 
-    print("\nadded %d, updated %d" % (added, updated))
+    print("\nrenamed %d, added %d, updated %d" % (renamed, added, updated))
     cur.execute(
         "select due_date, status, severity, coalesce(assignee, pending_for, '-'), title "
         "from open_items order by status, due_date, id")

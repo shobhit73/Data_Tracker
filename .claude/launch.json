@@ -1,0 +1,6 @@
+﻿{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "dsp-dashboard", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8790", "--directory", "site"], "port": 8790 }
+  ]
+}

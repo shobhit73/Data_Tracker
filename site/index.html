@@ -182,9 +182,15 @@ tr.cov-row{cursor:pointer}
 tr.cov-row:hover{background:var(--uzio-color-bg-row-hover)}
 .cov-tl__head{font-size:12.5px;color:var(--uzio-color-text-body);line-height:1.7;margin-bottom:14px}
 .cov-tl__head b{color:var(--uzio-color-text-heading)}
-.cov-tl__chart{display:flex;align-items:flex-end;gap:4px;height:120px;overflow-x:auto;padding-bottom:2px}
+/* Taller than it looks like it needs to be: the gap between a 1-person day and
+   a 258-person day is the whole point of the chart, and 120px could not hold
+   it. padding-top leaves room for the value printed above the tallest bars. */
+.cov-tl__chart{display:flex;align-items:flex-end;gap:4px;height:168px;overflow-x:auto;
+  padding:18px 0 2px}
 .cov-tl__slot{display:flex;align-items:flex-end;gap:2px;height:100%;flex:0 0 auto;cursor:default}
-.cov-tl__bar{width:13px;min-height:3px;border-radius:2px 2px 0 0}
+.cov-tl__bar{position:relative;width:13px;min-height:3px;border-radius:2px 2px 0 0}
+.cov-tl__val{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:3px;
+  font-size:10px;font-weight:700;color:var(--uzio-color-text-heading);white-space:nowrap}
 /* Colour carries the "who": one glance separates a staff bulk load from the
    client adding people one at a time. */
 .cov-tl__bar--staff{background:var(--uzio-color-action)}
@@ -194,7 +200,8 @@ tr.cov-row:hover{background:var(--uzio-color-bg-row-hover)}
 .cov-tl__legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;
   color:var(--uzio-color-text-muted)}
 .cov-tl__key{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
-.cov-tl__axis{display:flex;gap:4px;margin-top:6px;font-size:10px;color:var(--uzio-color-text-faint)}
+.cov-tl__axis{display:flex;justify-content:space-between;gap:4px;margin-top:6px;font-size:10.5px;
+  color:var(--uzio-color-text-faint)}
 .cov-tl__empty{font-size:12.5px;color:var(--uzio-color-text-muted)}
 
 /* ---------- sortable headers ---------- */
@@ -421,6 +428,10 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
    without this the picker icon goes dark-on-dark under the dark theme. */
 .oi-input[type=date],.oi-select{color-scheme:light dark}
 .oi-input--sm{height:28px;width:150px;font-size:12px}
+/* Marks the "You are" box when a close was blocked for want of a name. The
+   message alone was not enough — it sits at the far side of the panel from the
+   button that was clicked. */
+.oi-input--needed{border-color:var(--uzio-color-error);box-shadow:0 0 0 3px rgba(214,69,69,.18)}
 .oi-textarea{height:auto;min-height:58px;padding:8px 10px;line-height:1.5;resize:vertical}
 .oi-input:focus,.oi-select:focus,.oi-textarea:focus{outline:2px solid var(--uzio-color-action);
   outline-offset:-1px;border-color:transparent}
@@ -2174,11 +2185,18 @@ function wireOpenOnce(el){
     const meInput = el.querySelector('#oiMe');
     const name = (meInput && meInput.value.trim()) || '';
 
-    // Closing an item records who did it, so it cannot go in nameless.
+    // Closing records who did it, so a name is required. Point at the name box
+    // and nothing else: revealing #oiForm here (as this once did) puts the
+    // "Add item" form on screen, which has no name field in it and reads as
+    // "fill this in to continue" — people typed "Completed" into the title.
     if(doneId && !name){
       openMsg(el, 'Enter your name in the "You are" box first — it is recorded as who closed the item.', 'err');
-      el.querySelector('#oiForm').hidden = false;
-      if(meInput) meInput.focus();
+      if(meInput){
+        meInput.classList.add('oi-input--needed');
+        meInput.addEventListener('input',
+          () => meInput.classList.remove('oi-input--needed'), { once: true });
+        meInput.focus();
+      }
       return;
     }
     if(doneId) setMe(name);
@@ -2195,8 +2213,9 @@ function wireOpenOnce(el){
     } catch(err){
       btn.disabled = false;
       btn.textContent = original;
+      // Message only — the write failed, and opening the "Add item" form here
+      // just suggests the wrong next step.
       openMsg(el, 'Could not update: ' + err.message, 'err');
-      el.querySelector('#oiForm').hidden = false;
     }
   });
 }
@@ -2322,6 +2341,28 @@ function covCell(n, d){
    people" from "somebody added 7 stragglers three weeks later" — for Stave it
    records only the second. The bars show both, so a claimed run with no batch
    behind it is visible, and so is a real load the log dated wrongly. */
+/* Pick the coarsest-needed period so the chart stays on one screen. Day while
+   the history is short, then week, then month. */
+const TL_MAX_SLOTS = 40;
+const TL_GRAINS = [
+  ['day', d => d, d => fmtDatePlain(d)],
+  ['week', d => { const t = new Date(d + 'T00:00:00');
+                  t.setDate(t.getDate() - ((t.getDay() + 6) % 7));   // back to Monday
+                  return isoLocal(t); },
+   d => 'week of ' + fmtDatePlain(d)],
+  ['month', d => d.slice(0, 7) + '-01',
+   d => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })]
+];
+
+function tlGrain(dates){
+  for(let i = 0; i < TL_GRAINS.length; i++){
+    const [unit, key, label] = TL_GRAINS[i];
+    const n = new Set(dates.map(key)).size;
+    if(n <= TL_MAX_SLOTS || i === TL_GRAINS.length - 1)
+      return { unit: unit, key: key, label: label, slots: n };
+  }
+}
+
 function covTimeline(evs){
   if(!evs.length) return '<div class="cov-tl__empty">No load history recorded for this client.</div>';
 
@@ -2338,10 +2379,16 @@ function covTimeline(evs){
     if(!majorityOn && totalAdded && running >= totalAdded / 2) majorityOn = e;
   });
 
-  // One slot per date; a date can hold several actors and a departure count.
+  /* One slot per period. Day is the natural grain, but 55th and 3rd has eight
+     months of history: 148 day-slots, which scroll sideways and — worse — put
+     39 single-person days beside a 258-person one, where each of them clamps to
+     the same 3px stub and nothing can be told apart. Widen the period until the
+     chart fits on screen, so every bar carries a readable quantity. */
+  const grain = tlGrain(evs.map(e => (e.event_date || '').slice(0, 10)));
+
   const byDate = {};
   evs.forEach(e => {
-    const d = (e.event_date || '').slice(0, 10);
+    const d = grain.key((e.event_date || '').slice(0, 10));
     const slot = byDate[d] || (byDate[d] = { d: d, add: 0, term: 0, actors: {}, type: null });
     if(e.kind === 'added'){
       slot.add += e.employees || 0;
@@ -2355,18 +2402,44 @@ function covTimeline(evs){
   const slots = Object.keys(byDate).sort().map(k => byDate[k]);
   const peak = Math.max.apply(null, slots.map(s => Math.max(s.add, s.term)).concat([1]));
 
+  /* Square-root heights, not linear. Linearly a 1-person day against a
+     258-person peak is 0.4% — below the 3px floor, so the entire tail rendered
+     as one flat row of identical stubs and the only way to read the chart was
+     to hover every bar. Root keeps the order and the peak intact while giving
+     the small days a height you can actually compare. It does mean height is
+     not proportional to count, so the legend says so and the big bars carry
+     their number. */
+  // Tops out at 90%, not 100%: overflow-x:auto on the chart forces overflow-y to
+  // clip too, so a full-height bar would have its printed value cut off.
+  const h = (v) => v > 0 ? Math.max(4, Math.round(Math.sqrt(v / peak) * 90)) : 0;
+  // Print the count only where it will not collide with its neighbours.
+  const labelAt = Math.max(peak * 0.25, 10);
+
   const bars = slots.map(s => {
-    const who = Object.keys(s.actors).map(a => a + ' (' + s.actors[a].toLocaleString() + ')').join(', ');
-    const tip = fmtDatePlain(s.d) +
+    // Per-actor counts only when the period had more than one — otherwise the
+    // total is simply repeated back ("263 added by birajpal.singh1 (263)").
+    const names = Object.keys(s.actors);
+    const who = names.length > 1
+      ? names.map(a => a + ' (' + s.actors[a].toLocaleString() + ')').join(', ')
+      : names.join('');
+    const tip = grain.label(s.d) +
       (s.add ? ' · ' + s.add.toLocaleString() + ' added' + (who ? ' by ' + who : '') : '') +
       (s.term ? ' · ' + s.term.toLocaleString() + ' left' : '');
+    const val = (n) => n >= labelAt ? '<span class="cov-tl__val">' + n.toLocaleString() + '</span>' : '';
     return '<div class="cov-tl__slot" title="' + esc(tip) + '">' +
       (s.add ? '<div class="cov-tl__bar cov-tl__bar--' + esc(s.type || 'staff') +
-        '" style="height:' + Math.max(3, Math.round(s.add / peak * 100)) + '%"></div>' : '') +
+        '" style="height:' + h(s.add) + '%">' + val(s.add) + '</div>' : '') +
       (s.term ? '<div class="cov-tl__bar cov-tl__bar--term" style="height:' +
-        Math.max(3, Math.round(s.term / peak * 100)) + '%"></div>' : '') +
+        h(s.term) + '%"></div>' : '') +
     '</div>';
   }).join('');
+
+  const axis = slots.length
+    ? '<div class="cov-tl__axis"><span>' + esc(fmtDatePlain(slots[0].d)) + '</span>' +
+      '<span>' + esc(grain.unit === 'day' ? 'one bar per day'
+        : 'one bar per ' + grain.unit + ' · ' + slots.length + ' ' + grain.unit + 's') + '</span>' +
+      '<span>' + esc(fmtDatePlain(slots[slots.length - 1].d)) + '</span></div>'
+    : '';
 
   const pct = (n) => covPct(n, totalAdded);
   const head =
@@ -2378,13 +2451,14 @@ function covTimeline(evs){
       totalAdded.toLocaleString() + ' employees added.';
 
   return '<div class="cov-tl__head">' + head + '</div>' +
-    '<div class="cov-tl__chart">' + bars + '</div>' +
+    '<div class="cov-tl__chart">' + bars + '</div>' + axis +
     '<div class="cov-tl__legend">' +
       '<span><i class="cov-tl__key" style="background:var(--uzio-color-action)"></i>Added by Uzio staff</span>' +
       '<span><i class="cov-tl__key" style="background:var(--uzio-color-orange)"></i>Added by the client</span>' +
       '<span><i class="cov-tl__key" style="background:var(--uzio-color-success)"></i>Added by SYSTEM</span>' +
       '<span><i class="cov-tl__key" style="background:var(--uzio-color-error)"></i>Left (since first load)</span>' +
-      '<span>Hover a bar for the date, the count and who did it.</span>' +
+      '<span>Bar heights use a square-root scale, so a tall bar is worth more ' +
+        'than it looks — hover any bar for the exact count.</span>' +
     '</div>';
 }
 

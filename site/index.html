@@ -321,9 +321,14 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
   border-radius:var(--uzio-radius-md);margin-bottom:10px;overflow:hidden}
 /* Grid, not flex: the columns must line up down the list, otherwise the vendor
    chip and the date drift left and right with the length of each client name. */
-.hist-head{display:grid;grid-template-columns:12px minmax(0,1fr) 62px 170px 150px 92px;
+.hist-head{display:grid;grid-template-columns:12px minmax(0,1fr) 62px 116px 170px 150px 92px;
   align-items:center;gap:12px;width:100%;padding:12px 16px;cursor:pointer;
   font-family:inherit;text-align:left;color:inherit}
+.hist-head .uzio-status:first-of-type{justify-self:start}
+/* A client whose old platform can no longer be reached is not "behind", it is
+   finished-by-force. Fading the row stops unreachable work reading as a to-do. */
+.hist-client[data-access="blocked"] .hist-head__name,
+.hist-client[data-access="blocked"] .hist-head__meta{opacity:.62}
 .hist-head:hover{background:var(--uzio-color-bg-row-hover)}
 .hist-head:focus-visible{outline:2px solid var(--uzio-color-action);outline-offset:-2px}
 .hist-head__caret{color:var(--uzio-color-text-faint);font-size:11px;
@@ -338,9 +343,13 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 @media (max-width:1100px){
   /* Not enough room for six columns — drop the two that are context rather
      than status, keeping the name, the bar and the count. */
-  .hist-head{grid-template-columns:12px minmax(0,1fr) 62px 90px}
+  .hist-head{grid-template-columns:12px minmax(0,1fr) 62px 116px 90px}
   .hist-head__meta,.hist-head__bar{display:none}
 }
+.detail-access{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px;
+  font-size:12px;line-height:1.6;color:var(--uzio-color-text-body)}
+.detail-access b{color:var(--uzio-color-text-heading)}
+.detail-access .uzio-status{flex:0 0 auto;margin-top:1px}
 .hist-body{display:none;padding:2px 16px 16px;border-top:1px solid var(--uzio-color-divider)}
 .hist-client.is-open .hist-body{display:block}
 .hist-cat{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
@@ -1314,9 +1323,29 @@ function clientApiSection(client){
 function clientHistoricalSection(client){
   const sc = (DATA.histScope || []).find(s => s.dsp_short_code === client.dsp_short_code);
   if(!sc){
-    const why = (client.previous_system || '').trim().toLowerCase() === 'new'
-      ? 'New to the platform — there is no previous system to pull historical data from.'
-      : 'Not in the historical-data window (migrating DSPs are tracked for 30 days after payroll go-live).';
+    const acc = accessOf(client.dsp_short_code);
+    const dropped = (DATA.accessExcluded || {})[client.dsp_short_code];
+    let why;
+    if((client.previous_system || '').trim().toLowerCase() === 'new'){
+      why = 'New to the platform — there is no previous system to pull historical data from.';
+    } else if(dropped){
+      // The exclusion is a human decision and outranks the spreadsheet, which
+      // may well still say the credentials work.
+      why = 'Dropped from the historical-data window on ' + esc(dropped.excluded_on) + '. ' +
+            esc(dropped.reason);
+    } else if(acc.row && acc.status === 'Has access'){
+      // Worth saying plainly: the window has closed on this client but the
+      // access sheet says we can still get in, so the data is still there for
+      // the taking even though nothing here is tracking it.
+      why = 'Not in the historical-data window — the last onboarding API run is more than 90 days ' +
+            'old. The access sheet still lists working access, so this data could be collected.';
+    } else if(acc.row){
+      why = 'Not in the historical-data window. Platform access is recorded as "' +
+            esc(acc.status) + '".';
+    } else {
+      why = 'Not in the historical-data window (a DSP is tracked for 90 days after its ' +
+            'onboarding API runs, which is roughly how long ADP/Paycom access lasts).';
+    }
     return section('Historical Data', emptyNote(why));
   }
 
@@ -1346,8 +1375,21 @@ function clientHistoricalSection(client){
     reps.map(r => reportRow(r, false)).join('')
   ).join('');
 
+  const acc = accessOf(client.dsp_short_code);
+  const accLine =
+    '<div class="detail-access">' + accessChip(client.dsp_short_code) +
+      '<span>' + (acc.row
+        ? 'Platform access recorded as <b>' + esc(acc.status) + '</b> on ' + esc(acc.row.checked_on) +
+          (acc.row.fdqot_in_file ? '. Qualified-overtime figure in the file: <b>' +
+            esc(acc.row.fdqot_in_file) + '</b>' : '') +
+          (acc.usable ? '.' : ' — anything still pending below cannot be collected.')
+        : 'This client is not listed in the access spreadsheet, so whether ADP/Paycom can ' +
+          'still be reached is unknown.') +
+      '</span></div>';
+
   return section('Historical Data',
     '<div class="detail-card">' +
+      accLine +
       '<div class="uzio-progress" style="margin-bottom:12px">' +
       '<div class="uzio-progress__fill' + fill + '" style="width:' + pct + '%"></div></div>' +
       body +
@@ -1429,6 +1471,11 @@ const HIST_FILTERS = {
       { val: 'all', label: 'Any source' },
       { val: 'ADP', label: 'ADP', dot: DOT.info },
       { val: 'Paycom', label: 'Paycom', dot: DOT.orange }
+    ]},
+    { id: 'histAccess', options: [
+      { val: 'all', label: 'Any access' },
+      { val: 'usable', label: 'Still reachable', dot: DOT.good },
+      { val: 'blocked', label: 'Cannot log in', dot: DOT.bad }
     ]}
   ],
   toggles: [{ id: 'histPendingOnly', label: 'Only reports still pending' }],
@@ -1483,6 +1530,82 @@ function unitPill(u){
     esc(label) + '</span>';
 }
 
+/* Whether the previous platform can still be logged into, from the team's
+   access spreadsheet (client_platform_access).
+
+   This is what makes a 'Pending' row readable. Pending against "Has access"
+   is work outstanding; Pending against "Access lost" is data that is simply
+   gone, and chasing it is wasted effort. The two look identical without this.
+
+   'usable' drives sorting and filtering: false means no download is possible
+   today, whatever the file counts say. Unknown is deliberately not usable-false
+   — the sheet not mentioning a client is an absence of evidence, and 7 of the
+   clients currently tracked are absent from it. */
+const ACCESS = {
+  'Has access':             { sev: 'success', usable: true,  short: 'Access OK' },
+  'Blocked on OTP':         { sev: 'warning', usable: false, short: 'OTP blocked' },
+  'Credentials not working': { sev: 'warning', usable: false, short: 'Creds failing' },
+  'No credentials':         { sev: 'warning', usable: false, short: 'No creds' },
+  'Access lost':            { sev: 'error',   usable: false, short: 'Access lost' },
+  'Exited from Amazon':     { sev: 'error',   usable: false, short: 'Exited Amazon' },
+  'Not started':            { sev: 'neutral', usable: true,  short: 'Not started' },
+  'Unknown':                { sev: 'neutral', usable: true,  short: 'Access unknown' }
+};
+const ACCESS_UNRECORDED = { sev: 'neutral', usable: true, short: 'Access not checked' };
+
+function accessOf(code){
+  const row = (DATA.access || {})[code];
+  const meta = row ? (ACCESS[row.access_status] || ACCESS.Unknown) : ACCESS_UNRECORDED;
+  return { row: row, status: row ? row.access_status : 'Not checked',
+           sev: meta.sev, usable: meta.usable, short: meta.short };
+}
+
+function accessChip(code){
+  const a = accessOf(code);
+  const title = a.row
+    ? a.status + (a.row.checked_on ? ' · checked ' + a.row.checked_on : '') +
+      (a.row.fdqot_in_file ? ' · FDQOT: ' + a.row.fdqot_in_file : '')
+    : 'This client is not listed in the access spreadsheet.';
+  return '<span class="uzio-status uzio-status--' + a.sev + '" title="' + esc(title) + '">' +
+    esc(a.short) + '</span>';
+}
+
+/* Two sentences the file counts cannot say on their own.
+
+   The first is how much of the outstanding work is not actually doable, so a
+   large "still pending" number is not read as a backlog when part of it is
+   unreachable. The second is the reverse and is easy to miss entirely: the
+   90-day window is a stand-in for "can we still log in", and where the access
+   sheet says yes but the window has closed, the stand-in is wrong and real
+   collectable data is sitting outside the list. */
+function accessSummary(scope, byClient){
+  const outstanding = (code) => Object.values(byClient[code] || {})
+    .reduce((n, r) => n + r.units.filter(u => u.status !== 'Received').length, 0);
+
+  const blocked = scope.filter(sc => !accessOf(sc.dsp_short_code).usable);
+  const blockedFiles = blocked.reduce((n, sc) => n + outstanding(sc.dsp_short_code), 0);
+
+  const tracked = {};
+  scope.forEach(sc => { tracked[sc.dsp_short_code] = true; });
+  const excluded = DATA.accessExcluded || {};
+  const reachableOutside = (DATA.clients || []).filter(c => {
+    const a = (DATA.access || {})[c.dsp_short_code];
+    return a && a.access_status === 'Has access' &&
+           !tracked[c.dsp_short_code] && !excluded[c.dsp_short_code];
+  });
+
+  let out = '';
+  if(blocked.length) out +=
+    ' <b>' + blocked.length + '</b> of them cannot be logged into' +
+    (blockedFiles ? ', which accounts for <b>' + blockedFiles + '</b> of the files still outstanding' : '') +
+    ' — that work is not pending, it is gone.';
+  if(reachableOutside.length) out +=
+    ' Separately, <b>' + reachableOutside.length + '</b> clients the access sheet says we can still log' +
+    ' into are not tracked here at all, their last API run being older than the 90-day window (' +
+    reachableOutside.map(c => esc(c.dsp_name)).join(', ') + ').';
+  return out;
+}
+
 function renderHistorical(){
   const el = panel('historical-content');
   const scope = DATA.histScope || [];
@@ -1530,12 +1653,15 @@ function renderHistorical(){
     // needs block-level children, which a button's content model does not allow
     // — as a <span> it stayed inline and its height was ignored, so the bar
     // never drew at all.
+    const acc = accessOf(sc.dsp_short_code);
     return '<div class="hist-client" data-name="' + esc(name.toLowerCase()) + '"' +
-      ' data-vendor="' + esc(sc.vendor) + '" data-state="' + state + '">' +
+      ' data-vendor="' + esc(sc.vendor) + '" data-state="' + state + '"' +
+      ' data-access="' + (acc.usable ? 'usable' : 'blocked') + '">' +
       '<div class="hist-head" role="button" tabindex="0" aria-expanded="false">' +
         '<span class="hist-head__caret">▶</span>' +
         '<span class="hist-head__name" title="' + esc(name) + '">' + esc(name) + '</span>' +
         '<span class="uzio-chip">' + esc(sc.vendor) + '</span>' +
+        accessChip(sc.dsp_short_code) +
         '<span class="hist-head__meta">in scope since ' + esc(sc.entered_on) +
           (sc.folder_url
             ? ' &middot; <a class="hist-head__drive" target="_blank" rel="noopener"' +
@@ -1564,7 +1690,8 @@ function renderHistorical(){
     buildFilters(HIST_FILTERS) +
     '<p style="font-size:12px;color:var(--uzio-color-text-muted);margin:0 0 12px">' +
     gotFiles + ' of ' + totalFiles + ' expected files received across ' + scope.length + ' clients. ' +
-    'Payroll History is counted per year and Audit Trail per quarter.</p>' +
+    'Payroll History is counted per year and Audit Trail per quarter.' +
+    accessSummary(scope, byClient) + '</p>' +
     cards;
 
   // accordion — the header is a div playing the part of a button, so Enter and
@@ -1586,12 +1713,14 @@ function renderHistorical(){
   });
 
   const records = Array.from(el.querySelectorAll('.hist-client')).map(c => ({
-    el: c, name: c.dataset.name, vendor: c.dataset.vendor, state: c.dataset.state
+    el: c, name: c.dataset.name, vendor: c.dataset.vendor, state: c.dataset.state,
+    access: c.dataset.access
   }));
   wireFilters(el, HIST_FILTERS, records, (r, s) =>
     (!s.q || r.name.indexOf(s.q) !== -1) &&
     (s.histState === 'all' || r.state === s.histState) &&
-    (s.histVendor === 'all' || r.vendor === s.histVendor),
+    (s.histVendor === 'all' || r.vendor === s.histVendor) &&
+    (s.histAccess === 'all' || r.access === s.histAccess),
     (n, total) => n + ' of ' + total + ' clients'
   );
 
@@ -2775,14 +2904,25 @@ async function loadAll(){
   } catch(e){ fail('overview-content')(e); }
 
   await Promise.all([
-    // Historical data is three tables now: who is tracked, the report
-    // catalogue, and one status row per expected file.
+    // Historical data is four tables now: who is tracked, the report catalogue,
+    // one status row per expected file, and whether the old platform can still
+    // be reached at all — without which a 'Pending' row cannot be told apart
+    // from data nobody will ever be able to fetch.
     Promise.all([
       sbGet('historical_scope?select=*,client_overview(dsp_name)&order=entered_on.desc'),
       sbGet('historical_report_catalog?select=*&order=vendor.asc,sort_order.asc'),
-      sbGet('historical_report_status?select=*')
-    ]).then(([scope, catalog, status]) => {
+      sbGet('historical_report_status?select=*'),
+      sbGet('client_platform_access?select=*'),
+      sbGet('historical_scope_excluded?select=*')
+    ]).then(([scope, catalog, status, access, excluded]) => {
       DATA.histScope = scope; DATA.histCatalog = catalog; DATA.histStatus = status;
+      DATA.access = {};
+      (access || []).forEach(a => { DATA.access[a.dsp_short_code] = a; });
+      // Someone decided these are not collectable, and that decision is newer
+      // than the access spreadsheet — without it the page recommends chasing
+      // the very clients that were just dropped for having no access.
+      DATA.accessExcluded = {};
+      (excluded || []).forEach(x => { DATA.accessExcluded[x.dsp_short_code] = x; });
       renderHistorical();
     }).catch(fail('historical-content')),
     sbGet('audit_coverage?select=*&order=client_name.asc')

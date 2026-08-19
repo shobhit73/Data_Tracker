@@ -1,7 +1,7 @@
 """Sync audit_coverage to Rohit Kaushik's daily 'Audit coverage' mail.
 
-Source: the 08/16/2026 mail (message 1a00adcda4ccbe53, subject
-'Audit coverage - 11 of 14 clients need action - 08/16/2026').
+Source: the 08/18/2026 mail (message 1a01529b01ad3e44, subject
+'Audit coverage - 9 of 14 clients need action - 08/18/2026').
 
 The mail states, per client, how many of 6 audits are done and which are
 PENDING. Present is therefore derived as "the 6 categories minus the pending
@@ -21,8 +21,8 @@ import time
 
 from supabase_helper import connect
 
-CHECKED_DATE = "2026-08-16"
-SOURCE_MESSAGE = "Audit coverage mail 08/16/2026"
+CHECKED_DATE = "2026-08-18"
+SOURCE_MESSAGE = "Audit coverage mail 08/18/2026"
 
 CATEGORIES = [
     "Census", "Withholding", "Payment", "Prior Payroll",
@@ -31,27 +31,33 @@ CATEGORIES = [
 
 # client -> categories the mail lists as PENDING (everything else is Present).
 AUDITED = {
+    # 08/18: High Distinction graduated from 'Folder empty' to a real audited
+    # client at 1/6 -- only Withholding cleared. Its stale Overall row is
+    # deleted below, the same way Stave's was on 08/14.
+    "High Distinction Logistics LLC": ["Census", "Payment", "Prior Payroll",
+                                       "Deduction", "Emergency Contact"],
     "CDC LOGISTICS, LLC": ["Census", "Withholding", "Prior Payroll",
                            "Deduction", "Emergency Contact"],
     # Stave joined the audited set in the 08/14 mail at 1/6 (its stale
     # Overall/'Folder empty' row is deleted below); 08/15 moved it to 3/6 --
-    # Withholding and Deduction cleared. 08/16 holds at 3/6.
+    # Withholding and Deduction cleared. 08/16-08/18 hold at 3/6.
     "Stave Delivery": ["Census", "Payment", "Emergency Contact"],
-    # 08/15: Spelman up to 5/6, Payment cleared. 08/16 holds at 5/6.
-    "Spelman Logistics Inc": ["Census"],
     "North Star Parcel LLC": ["Census"],
-    "Lazo Logistics LLC": ["Census"],
-    # The 3 'complete' clients.
+    # The 5 'complete' clients. 08/15 took Spelman to 5/6 (Payment cleared);
+    # 08/18 clears its last Census gap, and Lazo's, so both reach 6/6 -- both
+    # drop off the mail's audit-gaps list entirely.
+    "Spelman Logistics Inc": [],
+    "Lazo Logistics LLC": [],
     "First Line Logistics": [],
     "Flash Hub Delivery": [],
     "InnovDel Inc": [],
 }
 
 # 'Needs attention' clients - tracked as one Overall row, not 6 categories.
+# 08/18: down to 5 -- High Distinction moved out into AUDITED above.
 NEEDS_ATTENTION = {
     "Trek Delivery": "Folder empty",
     "Always More Logistics": "Folder empty",
-    "High Distinction Logistics LLC": "Folder empty",
     "Beck Logistics LLC": "Folder empty",
     "Kynect Express LLC": "No Audit Files folder",
     "Express Package System Inc.": "No Audit Files folder",
@@ -129,17 +135,22 @@ def main():
         else:
             unchanged += 1
 
-    # Stave graduated from 'Folder empty' to a real audited client, so its
-    # Overall row is now false. Scoped delete - never a blanket cleanup.
-    cur.execute(
-        "delete from audit_coverage "
-        "where client_name = 'Stave Delivery' and audit_category = 'Overall'"
-    )
-    if cur.rowcount:
-        changes.append(
-            f"DELETED Stave Delivery / Overall "
-            f"(no longer 'Folder empty' - now audited at 1/6)"
+    # A client that graduates from 'Folder empty'/'No Audit Files folder' into
+    # the audited set keeps a stale Overall row that now contradicts its 6
+    # category rows. Stave hit this on 08/14 and High Distinction on 08/18, so
+    # it is driven off AUDITED rather than hardcoded per client. Still a scoped
+    # delete - only Overall rows, only for clients the mail now audits.
+    for client in AUDITED:
+        cur.execute(
+            "delete from audit_coverage "
+            "where client_name = %s and audit_category = 'Overall'",
+            (client,),
         )
+        if cur.rowcount:
+            changes.append(
+                f"DELETED {client} / Overall "
+                f"(no longer 'needs attention' - now audited)"
+            )
 
     conn.commit()
 

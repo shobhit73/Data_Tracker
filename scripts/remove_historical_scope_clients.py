@@ -22,7 +22,17 @@ from supabase_helper import connect
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-CODES = ["CDCL", "TRKD"]
+USAGE = ("usage: python remove_historical_scope_clients.py CODE [CODE ...] "
+         "--reason \"why they are being dropped\"")
+
+if "--reason" not in sys.argv[1:]:
+    raise SystemExit(USAGE + "\n\nThe reason is required: it is the only record of "
+                             "why the scope rule is being overridden for these clients.")
+_split = sys.argv.index("--reason")
+CODES = [c.upper() for c in sys.argv[1:_split]]
+REASON = " ".join(sys.argv[_split + 1:]).strip()
+if not CODES or not REASON:
+    raise SystemExit(USAGE)
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 BACKUP = os.path.join(DATA_DIR, f"removed_historical_scope_{'_'.join(CODES)}.json")
@@ -64,6 +74,19 @@ def main():
         json.dump({"historical_scope": scope, "historical_report_status": status},
                   fh, indent=2, default=str)
     print(f"backup written: {BACKUP}")
+
+    # Record the exclusion BEFORE deleting. Deleting alone does not hold: the
+    # scope rule is a live predicate and these clients keep matching it until
+    # their last API run ages past SCOPE_DAYS, so the next seed run would put
+    # them straight back. seed_historical_reports.refresh_scope checks this
+    # table, which is where the human decision lives.
+    cur.execute("""
+        insert into historical_scope_excluded (dsp_short_code, reason)
+        select unnest(%s::text[]), %s
+        on conflict (dsp_short_code) do update
+          set reason = excluded.reason, excluded_on = current_date, updated_at = now()
+    """, (CODES, REASON))
+    print(f"exclusions recorded: {cur.rowcount} ({REASON})")
 
     cur.execute("delete from historical_report_status where dsp_short_code = any(%s)", (CODES,))
     deleted_status = cur.rowcount

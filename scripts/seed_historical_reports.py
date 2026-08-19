@@ -14,18 +14,29 @@ Scope rule (agreed with the team):
   * DSPs whose previous_system is 'New' are excluded entirely — they were on no
     platform before, so there is nothing to migrate.
   * A DSP ENTERS scope when it is migrating from ADP/Paycom AND an onboarding
-    API has run for it in the last 30 days. Access to the old platform is lost
-    soon after the final run with the previous provider, and the first API run
-    marks the point where that clock starts.
+    API has run for it in the last SCOPE_DAYS days. The census run marks the
+    point where the clock starts.
   * The window controls entry only. A DSP stays in scope until every one of its
     reports is Received — otherwise unfinished work would silently disappear
-    from the dashboard after 30 days.
+    from the dashboard once the window passed.
+
+Why 90 days (developer-directed, 19 Aug 2026; was 30):
+    The window exists to mirror how long the old platform is still reachable.
+    ADP/Paycom access is typically revoked around 90 days after the census run,
+    and once it is gone the data cannot be pulled at any price — so the tracking
+    window has to cover the whole period in which a download is still possible.
+    At 30 days the dashboard stopped showing clients that were still perfectly
+    collectable, which is the expensive direction to be wrong in.
+
+    Revocation is not punctual, so it is not modelled: when a client's access is
+    actually cut off, drop it by hand with remove_historical_scope_clients.py.
+    The 90 days is the outer bound, not a promise.
 """
 import datetime
 
 from supabase_helper import connect
 
-SCOPE_DAYS = 30
+SCOPE_DAYS = 90
 
 # Most reports are a single deliverable. Two ADP reports are not: Payroll
 # History comes as one file per calendar year, and Audit Trail is pulled a
@@ -203,9 +214,21 @@ create table if not exists historical_report_status (
 );
 create index if not exists idx_hrs_dsp on historical_report_status(dsp_short_code);
 
+-- Clients that must NOT come back on the next refresh. The scope rule is a
+-- live predicate: a client whose ADP/Paycom access has been revoked still
+-- matches it for the rest of its 90 days, so deleting the scope row alone
+-- lasts only until someone re-runs this script. Exclusion is the record of a
+-- human decision that the rule cannot infer, and it outranks the rule.
+create table if not exists historical_scope_excluded (
+    dsp_short_code text primary key references client_overview(dsp_short_code) on delete cascade,
+    reason         text not null,
+    excluded_on    date not null default current_date,
+    updated_at     timestamptz not null default now()
+);
+
 grant usage on schema public to anon, authenticated;
-grant select on historical_report_catalog, historical_scope, historical_report_status
-  to anon, authenticated;
+grant select on historical_report_catalog, historical_scope, historical_report_status,
+  historical_scope_excluded to anon, authenticated;
 """
 
 RLS = """
@@ -252,12 +275,13 @@ def refresh_scope(cur):
     started DSPs will not qualify yet — the rule is only as current as the
     export.
 
-    Second caveat — this has no memory of deliberate removals. CDCL and TRKD
-    were taken out of scope by hand on 13 Aug (record kept in
-    data/removed_historical_scope_CDCL_TRKD.json); re-running this on 17 Aug put
-    CDCL straight back, because it still satisfies the rule. It had to be
-    deleted again. Until an exclusion list exists, check the scope count before
-    and after every run and undo any unwanted re-add.
+    Re-running is how a client enters, so anything the rule still matches comes
+    back — which is what you want when the window widens (CDCL and TRKD, dropped
+    on 15 Aug under the old 30-day rule, were asked back on 19 Aug). The one
+    thing the rule cannot infer is that a client's ADP/Paycom access has been
+    revoked early: it keeps matching for the rest of its 90 days. That case goes
+    in historical_scope_excluded, checked here, and is written by
+    remove_historical_scope_clients.py.
     """
     cur.execute(
         """
@@ -267,6 +291,8 @@ def refresh_scope(cur):
         join api_activity_runs a on a.fein = c.fein
         where c.previous_system in ('ADP','Paycom')
           and a.last_run_date >= current_date - %s
+          and not exists (select 1 from historical_scope_excluded x
+                          where x.dsp_short_code = c.dsp_short_code)
         on conflict (dsp_short_code) do nothing
         """,
         (SCOPE_DAYS,),

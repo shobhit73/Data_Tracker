@@ -6,8 +6,9 @@ __pycache__/
 *.pyc
 
 # Scratch files from working sessions (extracted fragments, downloaded copies of
-# the deployed page) — not project sources.
+# the deployed page, one-off table peeks) — not project sources.
 scripts/_*.html
+scripts/_*.py
 
 # Raw export of the internal "Uzio Implementation Onboarding Tracker" sheet.
 # Deliberately NOT committed: this repository is public, and the export carries
@@ -15,3 +16,8 @@ scripts/_*.html
 # and a phone number) that appear in some DSP Name cells.
 # Regenerate it locally with scripts/decode_dsp_sheet.py when needed.
 data/shruti_dsp_implementation.csv
+
+# Per-employee export from the Envers audit trail — real full names and employee
+# IDs for a named client. Same reason as above: this repository is public.
+# Regenerate it locally with scripts/export_55th3rd_id_changes.py when needed.
+data/55th-3rd-employee-id-changes.csv

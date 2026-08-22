@@ -94,6 +94,14 @@ KEYWORDS = {
     #  "InnovDel_Qualified Overtime Wages And Tips.xlsx").
     ("ADP", "Qualified Overtime Wages And Tips"): ["overtime"],
     # --- Paycom ---
+    # Paycom's name for the same no-tax-on-overtime report ADP files under
+    # "Qualified Overtime Wages And Tips", and it had the same two problems at
+    # once: no rule here, and the file sitting at the client root rather than
+    # in Historical Data. Stave's showed as a gap for three days with the file
+    # already in Drive. Paycom exports it with a timestamp and an id around the
+    # name ("20260819055609_estimated_qualified_premiums_report_97598722.xlsx"),
+    # so match on the two words that survive that, not on the full title.
+    ("Paycom", "Estimated Qualified Premiums Report"): ["qualified", "premiums"],
     ("Paycom", "Employee Time-Off"): ["employee", "timeoff"],
     ("Paycom", "Holiday/Blackout"): ["holiday"],
     ("Paycom", "Time-Off Audit"): ["timeoff", "audit"],

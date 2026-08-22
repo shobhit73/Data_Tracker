@@ -1,5 +1,12 @@
 """Walk each in-scope client's Drive folder and mark historical reports Received.
 
+The scan is one-directional and only ever writes 'Received' — it never writes
+'Pending', so a client already complete cannot regress. It also never touches a
+row marked 'Not applicable': that status is a human decision recorded from a
+mail or a vendor check ("no lien on employees", "no notes with report"), meaning
+the report cannot exist rather than that nobody fetched it. Such rows are
+reported as HELD and left for a person to reopen. See the guard in main().
+
 This script does NOT talk to Drive itself — the Drive connector lives in Claude,
 not in Python. It takes a JSON listing of the files found under a client's
 folder and does the matching, so the same matching rules are used every time
@@ -215,7 +222,7 @@ def main():
         fid = folders.get(prefix) or folders.get("") or entry.get("folder_id")
         return FOLDER_URL + fid if fid else None
 
-    updates, unmatched_all = [], {}
+    updates, unmatched_all, held = [], {}, []
     for entry in payload:
         code = entry["dsp_short_code"]
         files = entry.get("files", [])
@@ -248,7 +255,20 @@ def main():
 
         # Always re-write links, even for rows already Received — an earlier
         # scan may have marked them before links were being captured.
+        #
+        # 'Not applicable' is the exception and is never touched. That status is
+        # a HUMAN decision recorded from a mail or a vendor check — "no lien on
+        # employees", "client never used the E-Verify module" — meaning the
+        # report cannot exist, not that nobody has fetched it yet. A filename
+        # here can still match such a row (ADP's own naming is loose enough
+        # that a "Timecard Report with Notes" export would match FILI's N/A
+        # notes row), and flipping it to Received would silently delete that
+        # decision along with the note explaining it. Only a person may move a
+        # row off 'Not applicable'.
         for (rid, unit), (rname, fn) in claimed.items():
+            if status_of.get((rid, unit)) == "Not applicable":
+                held.append((code, rid, unit, rname, fn))
+                continue
             updates.append((code, rid, unit, rname, fn, folder_url_for(entry, fn),
                             status_of.get((rid, unit)) == "Received"))
 
@@ -263,6 +283,17 @@ def main():
         label = rname + (f" [{unit}]" if unit != "Report" else "")
         print(f"  {'   ' if already else 'NEW'} {code:6s} {label:50s} <- {fn}")
 
+    # Surfaced rather than silently skipped: if a file really does match a row
+    # somebody marked 'Not applicable', that is worth a human looking at once —
+    # either the file is misnamed, or the N/A call was wrong and needs undoing
+    # by hand.
+    if held:
+        print(f"\n{len(held)} row(s) left alone because they are 'Not applicable' "
+              f"— a file matched, but only a person may reopen these:")
+        for code, _rid, unit, rname, fn in held:
+            label = rname + (f" [{unit}]" if unit != "Report" else "")
+            print(f"  HELD {code:6s} {label:50s} <- {fn}")
+
     if unmatched_all:
         print("\nFiles in Drive that matched no report (check these — either an "
               "extra download or a naming the rules miss):")
@@ -276,10 +307,15 @@ def main():
 
     for code, rid, unit, _, fn, url, _already in updates:
         cur.execute(
+            # The status<>'Not applicable' guard is deliberately repeated here,
+            # even though such rows were already filtered out above. This is the
+            # last line before the write, and it is the one that cannot be
+            # skipped by a future edit to the matching loop.
             """update historical_report_status
                set status='Received', checked_date=current_date,
                    file_name=%s, folder_url=%s, updated_at=now()
-               where dsp_short_code=%s and report_id=%s and unit_label=%s""",
+               where dsp_short_code=%s and report_id=%s and unit_label=%s
+                 and status <> 'Not applicable'""",
             (fn.rsplit("/", 1)[-1], url, code, rid, unit),
         )
 

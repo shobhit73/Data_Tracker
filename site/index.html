@@ -1600,7 +1600,12 @@ function groupByCategory(reports){
 }
 
 function reportRow(r, withPendingAttr){
-  const pending = r.units.some(u => u.status !== 'Received');
+  // Only 'Pending' is outstanding work. This was "not Received", which swept
+  // 'Not applicable' in with it — so an all-N/A report survived the
+  // pending-only filter and put a closed question on the list of things to
+  // chase. The three statuses are Received / Pending / Not applicable; nothing
+  // else reaches this.
+  const pending = r.units.some(u => u.status === 'Pending');
   return '<div class="hist-row"' + (withPendingAttr ? ' data-pending="' + (pending ? '1' : '0') + '"' : '') + '>' +
     '<div class="hist-row__name">' + esc(r.cat.report_name) +
       (r.cat.in_reference_doc ? '' :
@@ -1739,10 +1744,27 @@ function renderHistorical(){
     reports.forEach(r => r.units.sort((a, b) => a.unit_label.localeCompare(b.unit_label)));
     reports.sort((a, b) => a.cat.sort_order - b.cat.sort_order);
 
+    // 'Not applicable' leaves the denominator rather than counting as shortfall.
+    // Those units are closed questions — "no lien on employees", "client never
+    // used the E-Verify module" — not files anyone is waiting for. Counted in,
+    // a client that has finished can never show as finished: First Line sat at
+    // 12/21 amber with nothing outstanding, and Stave could not pass 96%. Worse,
+    // N/A and Pending were indistinguishable here, so recording the truth about
+    // a report bought nothing and the bar stayed amber forever.
     const all = reports.reduce((n, r) => n + r.units.length, 0);
-    const got = reports.reduce((n, r) => n + r.units.filter(u => u.status === 'Received').length, 0);
-    const pct = all ? got / all * 100 : 0;
-    const state = got === all && all ? 'complete' : (got ? 'partial' : 'none');
+    const na  = reports.reduce((n, r) =>
+      n + r.units.filter(u => u.status === 'Not applicable').length, 0);
+    const got = reports.reduce((n, r) =>
+      n + r.units.filter(u => u.status === 'Received').length, 0);
+    const want = all - na;   // units that can actually arrive
+
+    // want === 0 with rows present means every unit is closed, which is complete
+    // rather than empty — and it is also what guards the division. all === 0 is
+    // a different thing entirely (nothing tracked for this client yet) and must
+    // not be flattered into looking finished.
+    const pct = want ? got / want * 100 : (all ? 100 : 0);
+    const state = !all ? 'none'
+                : (got === want ? 'complete' : (got ? 'partial' : 'none'));
     const fill = state === 'complete' ? '' :
       (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
     const badge = state === 'complete' ? 'success' : (pct >= 50 ? 'warning' : 'error');
@@ -1773,13 +1795,23 @@ function renderHistorical(){
         '<div class="uzio-progress hist-head__bar">' +
           '<div class="uzio-progress__fill' + fill + '" style="width:' + pct + '%"></div>' +
         '</div>' +
-        '<span class="uzio-status uzio-status--' + badge + '">' + got + ' / ' + all + ' files</span>' +
+        // The n/a count stays on screen rather than the denominator quietly
+        // shrinking: 12 / 12 with nine reports excluded is a different claim
+        // from 12 / 12 with nothing excluded, and the reader should see which.
+        '<span class="uzio-status uzio-status--' + badge + '"' +
+          (na ? ' title="' + na + ' unit(s) marked Not applicable — reports that '
+              + 'cannot exist for this client, so they are not counted as outstanding"' : '') +
+          '>' + got + ' / ' + want + ' files' +
+          (na ? ' &middot; ' + na + ' n/a' : '') + '</span>' +
       '</div>' +
       '<div class="hist-body">' + body + '</div>' +
     '</div>';
   }).join('');
 
-  const totalFiles = status.length;
+  // Same rule as the per-client bars: "expected" means units that can actually
+  // arrive, so the headline and the cards cannot disagree about what is left.
+  const naFiles = status.filter(s => s.status === 'Not applicable').length;
+  const totalFiles = status.length - naFiles;
   const gotFiles = status.filter(s => s.status === 'Received').length;
 
   el.innerHTML =
@@ -1794,6 +1826,8 @@ function renderHistorical(){
     '<p style="font-size:12px;color:var(--uzio-color-text-muted);margin:0 0 12px">' +
     gotFiles + ' of ' + totalFiles + ' expected files received across ' + scope.length + ' clients. ' +
     'Payroll History is counted per year and Audit Trail per quarter.' +
+    (naFiles ? ' A further ' + naFiles + ' are marked not applicable — reports that '
+             + 'cannot exist for that client, so they are not counted as expected.' : '') +
     accessSummary(scope, byClient) + '</p>' +
     cards;
 

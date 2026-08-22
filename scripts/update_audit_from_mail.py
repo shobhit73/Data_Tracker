@@ -1,7 +1,7 @@
 """Sync audit_coverage to Rohit Kaushik's daily 'Audit coverage' mail.
 
-Source: the 08/18/2026 mail (message 1a01529b01ad3e44, subject
-'Audit coverage - 9 of 14 clients need action - 08/18/2026').
+Source: the 08/21/2026 mail (message 1a0249c98ac75982, subject
+'Audit coverage - 7 of 14 clients need action - 08/21/2026').
 
 The mail states, per client, how many of 6 audits are done and which are
 PENDING. Present is therefore derived as "the 6 categories minus the pending
@@ -21,8 +21,8 @@ import time
 
 from supabase_helper import connect
 
-CHECKED_DATE = "2026-08-18"
-SOURCE_MESSAGE = "Audit coverage mail 08/18/2026"
+CHECKED_DATE = "2026-08-21"
+SOURCE_MESSAGE = "Audit coverage mail 08/21/2026"
 
 CATEGORIES = [
     "Census", "Withholding", "Payment", "Prior Payroll",
@@ -33,19 +33,27 @@ CATEGORIES = [
 AUDITED = {
     # 08/18: High Distinction graduated from 'Folder empty' to a real audited
     # client at 1/6 -- only Withholding cleared. Its stale Overall row is
-    # deleted below, the same way Stave's was on 08/14.
-    "High Distinction Logistics LLC": ["Census", "Payment", "Prior Payroll",
-                                       "Deduction", "Emergency Contact"],
-    "CDC LOGISTICS, LLC": ["Census", "Withholding", "Prior Payroll",
+    # deleted below, the same way Stave's was on 08/14. 08/19 holds at 1/6;
+    # 08/20 jumps it to 3/6 -- Prior Payroll and Deduction cleared; 08/21 to
+    # 4/6 -- Emergency Contact cleared, leaving Census and Payment.
+    "High Distinction Logistics LLC": ["Census", "Payment"],
+    # 08/19 moved CDC from 1/6 to 2/6 -- Census cleared. 08/20 and 08/21 both
+    # hold at 2/6, so CDC is now the only client still short of half.
+    "CDC LOGISTICS, LLC": ["Withholding", "Prior Payroll",
                            "Deduction", "Emergency Contact"],
     # Stave joined the audited set in the 08/14 mail at 1/6 (its stale
     # Overall/'Folder empty' row is deleted below); 08/15 moved it to 3/6 --
-    # Withholding and Deduction cleared. 08/16-08/18 hold at 3/6.
-    "Stave Delivery": ["Census", "Payment", "Emergency Contact"],
-    "North Star Parcel LLC": ["Census"],
-    # The 5 'complete' clients. 08/15 took Spelman to 5/6 (Payment cleared);
-    # 08/18 clears its last Census gap, and Lazo's, so both reach 6/6 -- both
-    # drop off the mail's audit-gaps list entirely.
+    # Withholding and Deduction cleared. 08/16-08/18 hold at 3/6; 08/19 moves
+    # it to 4/6 -- Emergency Contact cleared; 08/20 to 5/6 -- Payment cleared;
+    # 08/21 clears Census, so Stave drops off the gaps list at 6/6.
+    "Stave Delivery": [],
+    # North Star sat at 5/6 with Census outstanding through 08/20; the 08/21
+    # mail no longer lists it, so Census cleared and it is complete.
+    "North Star Parcel LLC": [],
+    # The 'complete' clients -- 5 on 08/20, 7 on 08/21 once Stave and North
+    # Star joined them. 08/15 took Spelman to 5/6 (Payment cleared); 08/18
+    # clears its last Census gap, and Lazo's, so both reach 6/6 -- both drop
+    # off the mail's audit-gaps list entirely.
     "Spelman Logistics Inc": [],
     "Lazo Logistics LLC": [],
     "First Line Logistics": [],
@@ -54,7 +62,8 @@ AUDITED = {
 }
 
 # 'Needs attention' clients - tracked as one Overall row, not 6 categories.
-# 08/18: down to 5 -- High Distinction moved out into AUDITED above.
+# 08/18: down to 5 -- High Distinction moved out into AUDITED above. The 08/21
+# mail still lists the same 5, unchanged.
 NEEDS_ATTENTION = {
     "Trek Delivery": "Folder empty",
     "Always More Logistics": "Folder empty",

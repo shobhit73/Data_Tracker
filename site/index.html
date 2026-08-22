@@ -102,6 +102,44 @@ h1,h2,h3,h4{margin:0;color:var(--uzio-color-text-heading)}
 .uzio-header__spacer{flex:1}
 .uzio-header__icons{display:flex;align-items:center;gap:16px;color:var(--uzio-color-text-muted)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* "Last refreshed" chip + its breakdown popover.
+   One line in the header answers "is this page current at all"; the popover
+   answers "current in WHICH respect", because the sources refresh on their own
+   cadences - prod nightly, the two mail steps when a mail lands, the API export
+   only when someone hand-drops one. A single global timestamp would average
+   those into a number that is true of nothing. */
+.refresh-wrap{position:relative;display:flex;align-items:center}
+.refresh-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--uzio-color-border);
+  background:var(--uzio-color-bg-card);border-radius:16px;padding:5px 11px;font:inherit;font-size:11.5px;
+  color:var(--uzio-color-text-muted);cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s}
+.refresh-chip:hover{background:var(--uzio-color-bg-subtle);border-color:var(--uzio-color-action)}
+.refresh-chip[aria-expanded="true"]{background:var(--uzio-color-action-bg-soft);border-color:var(--uzio-color-action);
+  color:var(--uzio-color-action)}
+.refresh-chip__dot{width:7px;height:7px;border-radius:50%;background:var(--uzio-color-text-faint);flex:none}
+.refresh-chip__caret{font-size:9px;opacity:.7}
+
+/* Nine sources plus the footer overran a short window, and the last rows were
+   simply unreachable - the popover is anchored to a fixed header, so it cannot
+   grow its way out of the viewport. Cap it and let it scroll instead. */
+.refresh-pop{position:absolute;top:calc(100% + 10px);right:0;width:322px;background:var(--uzio-color-bg-card);
+  border:1px solid var(--uzio-color-border);border-radius:8px;box-shadow:0 8px 26px rgba(0,0,0,.13);
+  padding:0 0 6px;display:none;z-index:20;max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain}
+.refresh-pop.is-open{display:block}
+/* Sticky so the heading survives the scroll - opaque background, or the rows
+   would show through it on the way past. */
+.refresh-pop__head{position:sticky;top:0;background:var(--uzio-color-bg-card);
+  padding:9px 14px 8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--uzio-color-text-faint);border-bottom:1px solid var(--uzio-color-border-light)}
+.refresh-row{display:flex;align-items:baseline;gap:9px;padding:7px 14px;font-size:12px}
+.refresh-row + .refresh-row{border-top:1px solid var(--uzio-color-border-light)}
+.refresh-row__dot{width:7px;height:7px;border-radius:50%;flex:none;position:relative;top:-1px}
+.refresh-row__label{color:var(--uzio-color-text-body);flex:1;line-height:1.35}
+.refresh-row__note{display:block;font-size:10.5px;color:var(--uzio-color-text-faint);margin-top:1px}
+.refresh-row__age{color:var(--uzio-color-text-muted);white-space:nowrap;font-size:11.5px}
+.refresh-pop__foot{padding:8px 14px 4px;font-size:10.5px;line-height:1.5;color:var(--uzio-color-text-faint);
+  border-top:1px solid var(--uzio-color-border-light)}
+@media (max-width:700px){ .refresh-chip__text{display:none} .refresh-pop{width:270px} }
 .uzio-avatar{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
   border-radius:50%;background:var(--uzio-color-action);color:#fff;font-weight:600;font-size:13px}
 
@@ -234,6 +272,15 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 .kv:first-of-type{border-top:none}
 .kv dt{color:var(--uzio-color-text-muted);flex-shrink:0}
 .kv dd{margin:0;font-weight:600;color:var(--uzio-color-text-heading);text-align:right;word-break:break-word}
+/* Document-transfer notes read as points, not prose: one line per fact in the
+   data, rendered as a list. Single-line notes (every other client) still fall
+   back to the plain block. */
+.doc-notes{margin-top:10px;font-size:12.5px;color:var(--uzio-color-text-muted);line-height:1.55}
+.doc-notes--list{margin:10px 0 0;padding-left:18px}
+.doc-notes--list li{margin-bottom:5px}
+.doc-notes--list li:last-child{margin-bottom:0}
+.doc-runline{font-size:12px;color:var(--uzio-color-text-muted);margin:0 0 12px}
+.doc-runline b{color:var(--uzio-color-text-heading)}
 .loc-row{border-top:1px solid var(--uzio-color-divider);padding:11px 0}
 .loc-row:first-of-type{border-top:none;padding-top:0}
 .loc-row__name{font-weight:700;font-size:13px;color:var(--uzio-color-text-heading);
@@ -499,7 +546,18 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
   <div class="uzio-header__title" id="header-title">Overview</div>
   <div class="uzio-header__spacer"></div>
   <div class="uzio-header__icons">
-    <span class="uzio-icon uzio-icon--help" title="Data is refreshed twice a day; reload the page to pull the latest"></span>
+    <div class="refresh-wrap">
+      <button class="refresh-chip" id="refresh-chip" aria-expanded="false" aria-controls="refresh-pop"
+              title="What was last refreshed, and when">
+        <span class="refresh-chip__dot" id="refresh-chip-dot"></span>
+        <span class="refresh-chip__text" id="refresh-chip-text">Checking freshness&hellip;</span>
+        <span class="refresh-chip__caret">&#9662;</span>
+      </button>
+      <div class="refresh-pop" id="refresh-pop" role="dialog" aria-label="Last refreshed by source">
+        <div class="refresh-pop__head">Last refreshed</div>
+        <div id="refresh-pop-body"></div>
+      </div>
+    </div>
     <span class="uzio-avatar">SS</span>
   </div>
 </header>
@@ -1427,23 +1485,64 @@ function clientAuditSection(client){
     present + ' of ' + rows.length + ' audits present');
 }
 
+/* A transfer is two events, not one: the run, and whatever was re-run after it.
+   Showing only "Failed 32" made a client whose failures were 31/32 cleared the
+   next day look untouched. So the card tracks first run -> cleared -> still
+   outstanding, and the progress bar measures the clearing, since that is the
+   part someone is actually chasing. failed_resolved is NULL for every client
+   that never had a re-run, and those fall back to the old flat display. */
 function clientDocumentsSection(client){
   const d = (DATA.documents || []).find(x => sameClient(x.client_name, client.dsp_name));
   if(!d) return section('Document Transfer', emptyNote('No document transfer reported for this client.'));
+
+  const failed = d.failed_docs != null ? Number(d.failed_docs) : null;
+  const cleared = d.failed_resolved != null ? Number(d.failed_resolved) : null;
+  const tracked = failed != null && cleared != null && failed > 0;
+  const left = tracked ? failed - cleared : null;
+  const uploaded = (d.total_docs != null && failed != null) ? Number(d.total_docs) - failed : null;
+
+  let bar = '';
+  if(tracked){
+    const pct = cleared / failed * 100;
+    const fill = left === 0 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
+    bar = '<div class="uzio-progress" style="margin-bottom:8px">' +
+            '<div class="uzio-progress__fill' + fill + '" style="width:' + pct + '%"></div>' +
+          '</div>' +
+          '<p class="doc-runline"><b>' + cleared.toLocaleString() + ' of ' + failed.toLocaleString() +
+          '</b> first-run failures cleared on re-run &middot; ' +
+          (left ? '<b>' + left.toLocaleString() + '</b> still outstanding' : 'all cleared') + '</p>';
+  }
+
   const breakdown = [];
   if(d.fail_filename_format) breakdown.push(d.fail_filename_format + ' filename format');
   if(d.fail_employee_not_found) breakdown.push(d.fail_employee_not_found + ' employee not found');
   if(d.fail_unsupported_type) breakdown.push(d.fail_unsupported_type + ' unsupported type');
+  if(d.fail_size_limit) breakdown.push(d.fail_size_limit + ' over size limit');
+
+  // One point per line in the data; a single line stays a plain block so the
+  // clients whose notes are still one sentence do not render as a 1-item list.
+  const points = (d.notes || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const notesHtml = !points.length ? ''
+    : points.length === 1
+      ? '<div class="doc-notes">' + esc(points[0]) + '</div>'
+      : '<ul class="doc-notes doc-notes--list">' +
+        points.map(p => '<li>' + esc(p) + '</li>').join('') + '</ul>';
+
   return section('Document Transfer',
+    bar +
     '<div class="detail-card">' +
       kv('Status', '<span class="uzio-status uzio-status--' + (DOC_STATUS_CLASS[d.status] || 'neutral') + '">' + esc(d.status) + '</span>') +
       kv('Transfer date', fmtDate(d.transfer_date)) +
-      kv('Total documents', d.total_docs != null ? num(d.total_docs) : null) +
-      kv('Failed', d.failed_docs != null ? num(d.failed_docs) : null) +
-      (breakdown.length ? kv('Failure breakdown', esc(breakdown.join(' · '))) : '') +
-      (d.notes ? '<div style="margin-top:10px;font-size:12.5px;color:var(--uzio-color-text-muted);line-height:1.55">' +
-        esc(d.notes) + '</div>' : '') +
-    '</div>');
+      kv(tracked ? 'Files processed' : 'Total documents', d.total_docs != null ? num(d.total_docs) : null) +
+      (tracked ? kv('Uploaded first run', uploaded != null ? num(uploaded) : null) : '') +
+      kv(tracked ? 'Failed first run' : 'Failed', failed != null ? num(failed) : null) +
+      (tracked ? kv('Cleared on re-run', num(cleared)) : '') +
+      (tracked ? kv('Still outstanding', num(left)) : '') +
+      (breakdown.length ? kv(tracked ? 'First-run breakdown' : 'Failure breakdown', esc(breakdown.join(' · '))) : '') +
+      (d.drive_folder_url ? kv('Source folder',
+        '<a href="' + esc(d.drive_folder_url) + '" target="_blank" rel="noopener">Google Drive</a>') : '') +
+    '</div>' +
+    notesHtml);
 }
 
 function clientOpenItemsSection(client){
@@ -1903,6 +2002,7 @@ function renderDocuments(rows){
       if(r.fail_filename_format) breakdown.push('filename ' + r.fail_filename_format);
       if(r.fail_employee_not_found) breakdown.push('no EE ' + r.fail_employee_not_found);
       if(r.fail_unsupported_type) breakdown.push('bad type ' + r.fail_unsupported_type);
+      if(r.fail_size_limit) breakdown.push('too big ' + r.fail_size_limit);
       if(r.employees_skipped) breakdown.push(Number(r.employees_skipped).toLocaleString() + ' employees skipped');
     }
     const links = [];
@@ -1957,10 +2057,18 @@ function renderDocuments(rows){
           esc(r.status) + '</span><div class="sub">' + fmtDate(r.transfer_date) + '</div>'
         : '<span class="sub">no transfer mail</span>') + '</td>' +
       '<td class="tnum">' + reported + '</td>' +
-      '<td class="tnum">' + (r && r.failed_docs != null ? num(r.failed_docs) : NIL) + '</td>' +
+      // Where a re-run cleared most of the failures, the raw first-run count on
+      // its own reads as "still broken" — so the number that needs chasing goes
+      // underneath it.
+      '<td class="tnum">' + (r && r.failed_docs != null
+        ? num(r.failed_docs) + (r.failed_resolved != null
+            ? '<div class="sub">' + (Number(r.failed_docs) - Number(r.failed_resolved)) +
+              ' still open</div>'
+            : '')
+        : NIL) + '</td>' +
       '<td class="sub" style="font-size:11.5px">' + (breakdown.length ? esc(breakdown.join(' · ')) : NIL) + '</td>' +
       '<td style="max-width:340px;white-space:normal;font-size:12px;color:var(--uzio-color-text-muted);line-height:1.5">' +
-        esc((r && r.notes) || '') + '</td>' +
+        esc(((r && r.notes) || '').split('\n').map(s => s.trim()).filter(Boolean).join(' · ')) + '</td>' +
     '</tr>';
   }).join('');
 
@@ -2982,6 +3090,139 @@ function renderHealth(rows){
 }
 
 /* ==================== INIT ==================== */
+/* ---- "Last refreshed" -------------------------------------------------
+   Read off each table's own updated_at rather than a hand-maintained banner
+   date, so this cannot drift from what actually happened.
+
+   Three of the sources also carry a date of their OWN that matters more than
+   when the loader ran: the audit mail's checked_date, the newest document
+   transfer, and the newest API run. Those two facts diverge exactly when it
+   is worth knowing - re-running the API loader against a stale hand-dropped
+   export refreshes updated_at while last_run_date stands still - so both are
+   shown, never one standing in for the other. */
+const FRESH_SOURCES = [
+  {label:'Client Overview',       table:'client_overview',          note:"Shruti's tracker + prod FEIN match"},
+  {label:'Data Coverage',         table:'client_data_coverage',     note:'prod: payment, emergency, licence, comp'},
+  {label:'Employee load history', table:'client_load_events',       note:'prod: joiners and leavers'},
+  {label:'Historical Data',       table:'historical_report_status', note:'Drive folder scan (on request only)'},
+  {label:'Platform access',       table:'client_platform_access',   note:'old-system reachability'},
+  {label:'Audit Coverage',        table:'audit_coverage',           note:"Rohit's daily mail",
+   srcCol:'checked_date',  srcLabel:'mail dated'},
+  {label:'Document Transfer',     table:'document_transfer',        note:'Document Upload Status thread',
+   srcCol:'transfer_date', srcLabel:'latest transfer'},
+  {label:'API Activity',          table:'api_activity_runs',        note:'PHIX-72859 export (hand-dropped)',
+   srcCol:'last_run_date', srcLabel:'newest run'},
+  {label:'Payroll Health',        table:'payroll_health',           note:'prod pay-run gaps'}
+];
+
+/* Buckets, not exact arithmetic: nobody acts on "31 hours". Floor rather than
+   round so 23h never reads as "1 day ago". */
+function ageText(ts){
+  const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+  if(mins < 1)  return 'just now';
+  if(mins < 60) return mins + ' min ago';
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24)  return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
+  const days = Math.floor(hrs / 24);
+  if(days < 31) return days + (days === 1 ? ' day ago' : ' days ago');
+  const mons = Math.floor(days / 30);
+  return mons + (mons === 1 ? ' month ago' : ' months ago');
+}
+/* Green = refreshed within a day and a half, so a nightly source that ran late
+   is not cried over. Amber to a week. Red past that. */
+function ageTone(ts){
+  const hrs = (Date.now() - new Date(ts).getTime()) / 3600000;
+  if(hrs <= 36)  return 'good';
+  if(hrs <= 192) return 'warn';
+  return 'bad';
+}
+
+async function loadFreshness(){
+  const chip = document.getElementById('refresh-chip');
+  const dot  = document.getElementById('refresh-chip-dot');
+  const text = document.getElementById('refresh-chip-text');
+  const body = document.getElementById('refresh-pop-body');
+
+  const one = async (table, col) => {
+    // nullslast: a row with no source date must not sort above real ones.
+    const r = await sbGet(table + '?select=' + col + '&order=' + col + '.desc.nullslast&limit=1');
+    return (r && r.length) ? r[0][col] : null;
+  };
+
+  const rows = await Promise.all(FRESH_SOURCES.map(async s => {
+    try {
+      const [updated, srcDate] = await Promise.all([
+        one(s.table, 'updated_at'),
+        s.srcCol ? one(s.table, s.srcCol) : Promise.resolve(null)
+      ]);
+      return Object.assign({}, s, { updated, srcDate });
+    } catch(e){
+      return Object.assign({}, s, { updated: null, srcDate: null, error: true });
+    }
+  }));
+
+  const live = rows.filter(r => r.updated);
+  if(!live.length){
+    text.textContent = 'Freshness unavailable';
+    body.innerHTML = '<div class="refresh-row"><span class="refresh-row__label">'
+      + 'Could not read the tables&rsquo; timestamps.</span></div>';
+    return;
+  }
+
+  const newest = live.reduce((a, b) => new Date(a.updated) > new Date(b.updated) ? a : b);
+  const stale  = live.filter(r => ageTone(r.updated) !== 'good');
+
+  // Text follows the newest source, the dot follows the WORST one - otherwise
+  // "5 min ago" in green would quietly vouch for a source nobody has touched
+  // in a fortnight.
+  const worstTone = live.some(r => ageTone(r.updated) === 'bad') ? 'bad'
+                  : (stale.length ? 'warn' : 'good');
+  dot.style.background = DOT[worstTone];
+  text.textContent = 'Refreshed ' + ageText(newest.updated)
+    + (stale.length ? ' · ' + stale.length + ' stale' : '');
+  chip.title = 'Newest: ' + newest.label + ', ' + new Date(newest.updated).toLocaleString()
+    + '\nClick for the full breakdown';
+
+  body.innerHTML = rows.map(r => {
+    if(!r.updated){
+      return '<div class="refresh-row">'
+        + '<span class="refresh-row__dot" style="background:' + DOT.bad + '"></span>'
+        + '<span class="refresh-row__label">' + esc(r.label)
+        + '<span class="refresh-row__note">' + (r.error ? 'could not be read' : 'no rows yet') + '</span></span>'
+        + '<span class="refresh-row__age">&mdash;</span></div>';
+    }
+    const note = r.srcCol && r.srcDate
+      ? esc(r.note) + ' &middot; ' + esc(r.srcLabel) + ' ' + fmtDatePlain(r.srcDate)
+      : esc(r.note);
+    return '<div class="refresh-row">'
+      + '<span class="refresh-row__dot" style="background:' + DOT[ageTone(r.updated)] + '"></span>'
+      + '<span class="refresh-row__label">' + esc(r.label)
+      + '<span class="refresh-row__note">' + note + '</span></span>'
+      + '<span class="refresh-row__age" title="' + esc(new Date(r.updated).toLocaleString()) + '">'
+      + esc(ageText(r.updated)) + '</span></div>';
+  }).join('');
+
+  body.insertAdjacentHTML('beforeend',
+    '<div class="refresh-pop__foot">Each source refreshes on its own cadence &mdash; '
+    + 'prod nightly, the mail steps when a mail lands, the API export only when one is dropped in. '
+    + 'Reload the page to re-check.</div>');
+}
+
+(function(){
+  const chip = document.getElementById('refresh-chip');
+  const pop  = document.getElementById('refresh-pop');
+  if(!chip) return;
+  const close = () => { pop.classList.remove('is-open'); chip.setAttribute('aria-expanded','false'); };
+  chip.addEventListener('click', e => {
+    e.stopPropagation();
+    const open = pop.classList.toggle('is-open');
+    chip.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  pop.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', close);
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') close(); });
+})();
+
 async function loadAll(){
   const out = {};
   const fail = (id) => (e) => { panel(id).innerHTML = '<div class="err-box">' + esc(e.message) + '</div>'; };
@@ -3074,6 +3315,9 @@ async function loadAll(){
 })();
 
 loadAll();
+/* Independent of loadAll: the chip must not wait on the heaviest view, and a
+   failure here must not take the dashboard down with it. */
+loadFreshness();
 </script>
 </body>
 </html>

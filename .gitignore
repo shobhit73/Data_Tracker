@@ -21,3 +21,9 @@ data/shruti_dsp_implementation.csv
 # IDs for a named client. Same reason as above: this repository is public.
 # Regenerate it locally with scripts/export_55th3rd_id_changes.py when needed.
 data/55th-3rd-employee-id-changes.csv
+
+# The 164 Stave Delivery employees who ended the document upload with nothing
+# against their profile — names, hire and termination dates. Third time for the
+# same reason: this repository is public. The script that writes it is committed,
+# the output is not. Regenerate locally with scripts/add_stave_zero_doc_employees.py.
+data/stave_zero_doc_employees.csv

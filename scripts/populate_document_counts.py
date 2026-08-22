@@ -35,7 +35,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pq_helper
 from supabase_helper import connect
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+# Only a real console stream can be reconfigured. refresh_prod.py runs each step
+# under redirect_stdout(StringIO), which has no .reconfigure -- guarding here
+# stops that runner from losing this step entirely on every scheduled run.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 AMAZON_EXCHANGE = "EX-20243277-1b50-4035-821d-d0fcd9b895a9"
 

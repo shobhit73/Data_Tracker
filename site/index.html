@@ -368,10 +368,30 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
   border-radius:var(--uzio-radius-md);margin-bottom:10px;overflow:hidden}
 /* Grid, not flex: the columns must line up down the list, otherwise the vendor
    chip and the date drift left and right with the length of each client name. */
-.hist-head{display:grid;grid-template-columns:12px minmax(0,1fr) 62px 116px 170px 150px 92px;
+/* Six columns, not seven: the access chip has left the collapsed header. It sat
+   at 116px on every row saying "Access unknown" or "Access not checked" for most
+   of them — an assertion of nothing, occupying the widest neutral pill on screen.
+   Access still drives the row filter and the faded styling below, still appears
+   in full when the card is opened, and is still summarised above the list; it
+   just no longer costs a column to say it is unknown.
+
+   The 92px status column that freed space now goes to was also the overlap: the
+   count pill is nowrap, so "44 / 44 · 2 n/a" simply ran out over the bar to its
+   left. Guessing a wider fixed width would only move the cliff, so the pill's
+   track is max-content — it is now impossible for it to outgrow its column,
+   whatever ends up written in it. The bar absorbs the difference through its
+   minmax instead, which is why it is the one track allowed to breathe: a bar a
+   few pixels shorter on the two rows carrying an n/a count is invisible, where
+   a pill overlapping it is not.
+
+   Every other track stays fixed. Each header is its own grid container, so
+   content-sized tracks would let each row choose its own widths and the columns
+   would stop lining up down the list, which is the whole reason this is a grid
+   rather than a flex row. */
+.hist-head{display:grid;
+  grid-template-columns:12px minmax(0,1fr) 62px 190px minmax(60px,150px) max-content;
   align-items:center;gap:12px;width:100%;padding:12px 16px;cursor:pointer;
   font-family:inherit;text-align:left;color:inherit}
-.hist-head .uzio-status:first-of-type{justify-self:start}
 /* A client whose old platform can no longer be reached is not "behind", it is
    finished-by-force. Fading the row stops unreachable work reading as a to-do. */
 .hist-client[data-access="blocked"] .hist-head__name,
@@ -389,8 +409,10 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 .hist-head .uzio-status{justify-self:end}
 @media (max-width:1100px){
   /* Not enough room for six columns — drop the two that are context rather
-     than status, keeping the name, the bar and the count. */
-  .hist-head{grid-template-columns:12px minmax(0,1fr) 62px 116px 90px}
+     than status, keeping the name, the vendor and the count. display:none takes
+     them out of the grid flow entirely, so four items remain and four tracks is
+     what must be declared here. */
+  .hist-head{grid-template-columns:12px minmax(0,1fr) 62px max-content}
   .hist-head__meta,.hist-head__bar{display:none}
 }
 /* Marks a mail-reported total that does not agree with the row count. Both
@@ -1786,7 +1808,6 @@ function renderHistorical(){
         '<span class="hist-head__caret">▶</span>' +
         '<span class="hist-head__name" title="' + esc(name) + '">' + esc(name) + '</span>' +
         '<span class="uzio-chip">' + esc(sc.vendor) + '</span>' +
-        accessChip(sc.dsp_short_code) +
         '<span class="hist-head__meta">in scope since ' + esc(sc.entered_on) +
           (sc.folder_url
             ? ' &middot; <a class="hist-head__drive" target="_blank" rel="noopener"' +
@@ -1798,10 +1819,15 @@ function renderHistorical(){
         // The n/a count stays on screen rather than the denominator quietly
         // shrinking: 12 / 12 with nine reports excluded is a different claim
         // from 12 / 12 with nothing excluded, and the reader should see which.
-        '<span class="uzio-status uzio-status--' + badge + '"' +
-          (na ? ' title="' + na + ' unit(s) marked Not applicable — reports that '
-              + 'cannot exist for this client, so they are not counted as outstanding"' : '') +
-          '>' + got + ' / ' + want + ' files' +
+        // The word "files" is dropped — it was repeated on all eleven rows and
+        // the sentence above the list already says what is being counted — which
+        // is also what keeps this pill inside its track instead of over the bar.
+        '<span class="uzio-status uzio-status--' + badge + '" title="' +
+          esc(got + ' of ' + want + ' expected files received' +
+              (na ? '. A further ' + na + ' are marked not applicable — reports that '
+                  + 'cannot exist for this client, so they are not counted as expected.'
+                  : '')) + '">' +
+          got + ' / ' + want +
           (na ? ' &middot; ' + na + ' n/a' : '') + '</span>' +
       '</div>' +
       '<div class="hist-body">' + body + '</div>' +

@@ -58,6 +58,25 @@ ORIGINAL_FILES = [
     # Verifying against 11 alone reported six lines "missing" that were simply
     # this export's data.
     "API Logs 15_08_02.csv",
+    # Same again on 18 Aug: the baseline was rebuilt with Rohit's export but the
+    # pin was not moved with it, so --verify replayed 12 files against a file
+    # built from 13 and called it a logic mismatch. The seven "committed only"
+    # lines were all dated 08-17/08-18 - this export's rows - and the three
+    # "rebuild only" lines were the same keys falling back to older dates.
+    # Whenever a rebuild --write is committed, the exports it consumed belong
+    # here, or the guard reports new data as a broken rule.
+    "Onbaording App Api runs from 1257.csv",
+    # And a third time on 20 Aug: 'New Logs.csv' was written into the baseline
+    # but not pinned, so --verify replayed 13 files against a file built from
+    # 14. The signature is always the same - the "committed only" lines carry
+    # the newer export's dates (here 08-18/08-19/08-20, plus fein 871375963,
+    # which appears in no other export at all) and the "rebuild only" lines are
+    # those same keys falling back to their previous, older dates.
+    "New Logs.csv",
+    # 22 Aug: pinned in the SAME change that wrote it into the baseline, which
+    # is the only way this stops recurring. If you run --write and commit the
+    # result, add the new export here before you finish - not next time.
+    "New Logs 2208.csv",
 ]
 
 

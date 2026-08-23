@@ -2860,11 +2860,21 @@ function renderCoverage(){
   const den = r => (active ? r.active_employees : r.total_employees) || 0;
   const got = (r, m) => (r[suffix + m.have]) || 0;
 
-  // client_overview.vendor only ever holds ADP, Paycom or null — there is no
-  // 'New' value in the data. Defaulting null to 'New' mislabelled 64 DSPs,
-  // Stave among them, which is mid-migration from Paycom.
+  /* previous_system, NOT vendor. They are different columns and they disagree
+     on 47 of the 102 clients: 29 carry vendor='ADP' while previous_system is
+     'New' (no previous platform at all), 17 carry vendor='ADP' against
+     previous_system='Paycom', and First Line Logistics is the mirror image —
+     vendor='Paycom', previous_system='ADP' — which is how it came up under the
+     Paycom filter here while its own detail page said ADP.
+
+     previous_system is the migration source and is what every other view uses.
+     vendor comes from the sheet's "Data Transfer (ADP)/(Paycom)" columns, which
+     are free-text checklists rather than a vendor flag, so it cannot be trusted
+     for this. */
   const vendorOf = {};
-  (DATA.clients || []).forEach(c => { vendorOf[c.dsp_short_code] = c.vendor || 'Not set'; });
+  (DATA.clients || []).forEach(c => {
+    vendorOf[c.dsp_short_code] = c.previous_system || 'Not set';
+  });
 
   // One pass builds everything the tiles, the filters and the table need.
   const items = rows.map(r => {
@@ -2930,9 +2940,13 @@ function renderCoverage(){
       ], COV.sev) +
     '</div>' +
     '<div class="filter-row"><span class="filter-row__label">Source</span>' +
+      // 'New' is a real previous_system value (29 clients migrated from nothing),
+      // so it needs its own chip — without one those clients are only reachable
+      // through "Any", and the source chips silently hide a third of the list.
       chips('covVendor', [
         { val: 'any', label: 'Any' }, { val: 'ADP', label: 'ADP' },
-        { val: 'Paycom', label: 'Paycom' }, { val: 'Not set', label: 'Not set' }
+        { val: 'Paycom', label: 'Paycom' }, { val: 'New', label: 'New DSP' },
+        { val: 'Not set', label: 'Not set' }
       ], COV.vendor) +
       '<div class="uzio-search" style="margin-left:8px"><span class="uzio-search__icon">&#8981;</span>' +
         '<input class="uzio-search__input" id="covSearch" placeholder="Search client or code" ' +

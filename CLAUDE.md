@@ -162,7 +162,21 @@ class names already match the DS 1:1.
 
 ---
 
-## Open Items is writable from the browser (added 08/19/2026)
+## Open Items moved to the DSP CRM Tracker (09/28/2026)
+
+Open items now live in Rohit Kaushik's CRM (https://crm-teal-chi-45.vercel.app,
+repo https://github.com/Rohit-Kaushik-git/CRM) as ad-hoc tasks — Phase 1 of the
+platform merge, plan in `docs/plans/2026-09-28-phase1-open-items-to-crm.md`.
+10 of the 12 rows became CRM tasks #1571–1580 via `crm-merge/import_open_items.py`
+(the 2 Flash Hub rows, both Done, are archived only in
+`data/open_items_backup_2026-09-28.json` — that client predates the CRM's
+import cutoff and creating it would have auto-generated 17 open template tasks).
+The dashboard's Open Items view is a frozen read-only archive with a banner;
+`scripts/lock_open_items.py` revokes the anon INSERT/UPDATE grants (run once —
+needs a human to execute). The section below describes the OLD writable posture
+and is kept for history; do not re-enable it.
+
+## Open Items is writable from the browser (added 08/19/2026 — RETIRED 09/28/2026, see above)
 
 Every other table on this dashboard is read-only from the page and written only by a script.
 `open_items` is the exception: the Open Items view can add an item (title, description, severity,

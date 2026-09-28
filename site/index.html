@@ -485,6 +485,9 @@ tr.row-link:focus-visible{outline:2px solid var(--uzio-color-action);outline-off
 .uzio-item--done .uzio-item__title{text-decoration:line-through;
   text-decoration-color:var(--uzio-color-text-faint)}
 .oi-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.oi-crm-banner{background:var(--uzio-cyan-050,#e8f7fa);border:1px solid var(--uzio-cyan-500,#00b5d8);
+  border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:14px;line-height:1.5}
+.oi-crm-banner a{font-weight:700}
 .oi-btn{height:32px;padding:0 14px;border-radius:var(--uzio-radius-sm);cursor:pointer;
   border:1px solid var(--uzio-color-action);background:var(--uzio-color-action);color:#fff;
   font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap}
@@ -806,7 +809,7 @@ function statusBucket(s){
 // Every DSP row, keyed by short code, so the detail sub-page can look one up
 // without re-fetching. DATA holds the other five datasets for the same reason.
 let CLIENTS_BY_CODE = {};
-const DATA = { loadEvents: {} };   // loadEvents is a per-client cache, filled on demand
+const DATA = { loadEvents: {}, sysActivity: {} };   // loadEvents is a per-client cache, filled on demand
 const PAGE_SIZES = [25, 50, 100];
 
 /* The five sources spell the same company differently — "InnovDel" vs
@@ -1195,6 +1198,7 @@ function showClient(code, origin){
       '<div class="detail-card"><h3>Work locations' +
         (locs.length ? ' (' + locs.length + ')' : '') + '</h3>' + locHtml + '</div>' +
     '</div>' +
+    clientGoLiveSection(r) +
     benefitsSection(r) +
     // Kept, but as a plain section rather than a callout — this is data lifted
     // out of the sheet's own cell, not an explanation of the page.
@@ -1212,6 +1216,72 @@ function showClient(code, origin){
 
   showView('client', r.dsp_name);
   loadClientTimeline(code);   // async: the section renders a placeholder first
+}
+
+/* What the system itself recorded, next to what the sheet claims. The
+   Milestones card above shows Shruti's hand-typed dates; this section shows
+   prod's answer to the same questions — the first day anyone actually punched
+   time in Uzio, and the first approved Uzio pay run. A sheet date with no prod
+   activity behind it is exactly the discrepancy this section exists to show. */
+function clientGoLiveSection(client){
+  const a = DATA.sysActivity[client.dsp_short_code];
+  if(!a) return section('System go-live — what prod shows',
+    '<div class="detail-card">' + emptyNote(
+      client.fein ? 'No system activity recorded in prod for this FEIN yet.'
+                  : 'Not matched to a prod employer, so there is nothing to read.') + '</div>');
+
+  // "sheet says 08/16" next to the prod date, but only when both exist and
+  // disagree — agreement needs no annotation.
+  const sheetNote = (sheetDate, prodDate) => {
+    if(!sheetDate) return '';
+    if(prodDate && sheetDate === prodDate) return '';
+    return ' <span style="color:var(--uzio-color-text-muted)">(sheet says ' +
+      fmtDatePlain(sheetDate) + ')</span>';
+  };
+
+  const ttLive = a.tt_first_live_date;
+  const ttCard =
+    '<div class="detail-card"><h3>Time tracking</h3>' +
+      kv('Setup published', a.tt_setup_completed ? 'Yes' : 'No') +
+      kv('Enrolled today', '<span class="tnum">' +
+        (a.tt_enrolled_employees || 0).toLocaleString() + '</span> employees') +
+      kv('First time recorded', ttLive
+        ? fmtDate(ttLive) + sheetNote(client.actual_tt_live_date, ttLive)
+        : 'Nothing recorded yet' + sheetNote(client.actual_tt_live_date, null)) +
+      (ttLive ? kv('Most recent entry', fmtDate(a.tt_last_entry_date)) : '') +
+      (ttLive ? kv('Employees who punched', '<span class="tnum">' +
+        (a.tt_employees_punched || 0).toLocaleString() + '</span>' +
+        (a.tt_enrolled_employees ? ' of ' + a.tt_enrolled_employees.toLocaleString() + ' enrolled' : '')) : '') +
+      (ttLive ? kv('Entries recorded', '<span class="tnum">' +
+        (a.tt_live_entries || 0).toLocaleString() + '</span>' +
+        (a.tt_imported_entries ? ' <span style="color:var(--uzio-color-text-muted)">(+' +
+          a.tt_imported_entries.toLocaleString() + ' imported)</span>' : '')) : '') +
+      // An import predating the first real punch means min(day) would lie about
+      // go-live; the live date above already excludes imports, so just show it.
+      (a.tt_first_entry_date && a.tt_first_entry_date !== ttLive
+        ? kv('Earliest entry incl. imports', fmtDate(a.tt_first_entry_date)) : '') +
+    '</div>';
+
+  const prLive = a.pr_first_normal_date;
+  const prCard =
+    '<div class="detail-card"><h3>Payroll</h3>' +
+      kv('First Uzio pay run', prLive
+        ? fmtDate(prLive) + sheetNote(client.payroll_live_date, prLive)
+        : 'No approved run yet' + sheetNote(client.payroll_live_date, null)) +
+      (prLive ? kv('Runs approved so far', '<span class="tnum">' +
+        (a.pr_normal_runs || 0).toLocaleString() + '</span>') : '') +
+      (prLive ? kv('Latest run', fmtDate(a.pr_last_normal_date) +
+        (a.pr_last_run_employees ? ' &middot; <span class="tnum">' +
+          a.pr_last_run_employees.toLocaleString() + '</span> employees paid' : '')) : '') +
+      kv('Prior-payroll loads', a.pr_prior_loads
+        ? '<span class="tnum">' + a.pr_prior_loads.toLocaleString() +
+          '</span> <span style="color:var(--uzio-color-text-muted)">(migrated history, not a go-live)</span>'
+        : NIL) +
+    '</div>';
+
+  return section('System go-live — what prod shows',
+    '<div class="detail-grid">' + ttCard + prCard + '</div>',
+    'read from prod on ' + fmtDatePlain(a.checked_date));
 }
 
 /* Coverage + load history for one client, on its own page rather than expanded
@@ -1388,18 +1458,25 @@ function clientApiSection(client){
   }
   const byModule = {};
   rows.forEach(a => { byModule[a.module_key] = a; });
-  const ran = MODULES.filter(m => byModule[m[0]]).length;
+  const ran = MODULES.filter(m => byModule[m[0]] && byModule[m[0]].run_status !== 'never_ok').length;
+  const STATUS = {
+    never_ok:    '<span class="uzio-status uzio-status--error">&#10007; Every run failed</span>',
+    last_failed: '<span class="uzio-status uzio-status--warning">&#9888; Latest run failed</span>',
+    no_result:   '<span class="uzio-status uzio-status--warning">&#9888; No result</span>'
+  };
   const body = MODULES.map(m => {
     const a = byModule[m[0]];
-    return '<tr><td>' + esc(m[1]) + '</td>' +
-      '<td>' + (a ? '<span class="uzio-status uzio-status--success">&#10003; Run</span>'
+    const loaded = a && a.last_total != null ? a.last_success + ' of ' + a.last_total : NIL;
+    return '<tr' + (a ? ' title="' + esc(apiCell(a).tip) + '"' : '') + '><td>' + esc(m[1]) + '</td>' +
+      '<td>' + (a ? (STATUS[a.run_status] || '<span class="uzio-status uzio-status--success">&#10003; Run</span>')
                   : '<span class="uzio-status uzio-status--error">&#10007; Never run</span>') + '</td>' +
       '<td>' + (a ? fmtDate(a.last_run_date) : NIL) + '</td>' +
-      '<td>' + (a && a.run_by ? esc(a.run_by.split('.')[0]) : NIL) + '</td></tr>';
+      '<td>' + (a && a.run_by ? esc(a.run_by.split('.')[0]) : NIL) + '</td>' +
+      '<td>' + loaded + '</td></tr>';
   }).join('');
   return section('API Activity', '<div class="table-shell table-shell--short"><table class="uzio-table">' +
-    '<thead><tr><th>Module</th><th>Status</th><th>Last run</th><th>Run by</th></tr></thead>' +
-    '<tbody>' + body + '</tbody></table></div>', ran + ' of ' + MODULES.length + ' modules run');
+    '<thead><tr><th>Module</th><th>Status</th><th>Last run</th><th>Run by</th><th>Loaded (last run)</th></tr></thead>' +
+    '<tbody>' + body + '</tbody></table></div>', ran + ' of ' + MODULES.length + ' modules loaded');
 }
 
 // Joins on dsp_short_code — historical_scope keys off client_overview directly,
@@ -2194,7 +2271,10 @@ function apiClients(){
     .filter(c => c.previous_system === 'ADP' || c.previous_system === 'Paycom')
     .map(c => {
       const runs = runsByFein[c.fein] || {};
-      const done = MODULES.filter(m => runs[m[0]]).length;
+      // A module whose every run failed was attempted, not done - it used to
+      // tick, which is how 0-of-1748 state tax loads read as complete.
+      const done = MODULES.filter(m => runs[m[0]] && runs[m[0]].run_status !== 'never_ok').length;
+      const failed = MODULES.filter(m => runs[m[0]] && apiRunFailed(runs[m[0]])).length;
       const dates = MODULES.map(m => runs[m[0]] && runs[m[0]].last_run_date).filter(Boolean);
       const people = [...new Set(MODULES
         .map(m => runs[m[0]] && runs[m[0]].run_by).filter(Boolean)
@@ -2208,7 +2288,7 @@ function apiClients(){
         // from changes who is urgent.
         live: c.actual_tt_live_date || '',
         payLive: c.payroll_live_date || '',
-        runs, done,
+        runs, done, failed,
         total: MODULES.length,
         lastRun: dates.length ? dates.sort().slice(-1)[0] : '',
         people,
@@ -2216,6 +2296,43 @@ function apiClients(){
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/* One matrix cell. run_status comes from load_api_activity.py, which reads each
+   run's SuccessMap/FailureMap: "ran" and "loaded records" are different things.
+     ok          latest run loaded >= 1 record              -> tick
+     last_failed latest run loaded nothing, earlier one did -> warning, shows the good run
+     no_result   latest run left no result (crashed)        -> warning
+     never_ok    every run loaded 0 records                 -> cross WITH a date
+   A cross with no date is "never run". */
+function apiRunFailed(r){
+  return r.run_status === 'never_ok' || r.run_status === 'last_failed' || r.run_status === 'no_result';
+}
+function apiCell(r){
+  const md = d => d ? d.slice(5).replace('-', '/') : '';
+  const who = p => esc((p || '').split('.')[0]);
+  const of = (s, t) => (s == null || t == null) ? '' : s + ' of ' + t;
+  const latest = 'Latest run ' + md(r.last_run_date) + ' by ' + who(r.run_by);
+  let icon, sub, tip;
+  if(r.run_status === 'never_ok'){
+    icon = '<span class="uzio-status uzio-status--error">&#10007;</span>';
+    sub = md(r.last_run_date) + ' &middot; ' + (r.last_total != null ? '0/' + r.last_total + ' loaded' : 'failed');
+    tip = 'Ran, but no run has ever loaded a record. ' + latest + ': ' + of(r.last_success, r.last_total) + ' loaded.';
+  } else if(r.run_status === 'last_failed'){
+    icon = '<span class="uzio-status uzio-status--warning">&#9888;</span>';
+    sub = 'OK ' + md(r.last_ok_date) + ' &middot; ' + who(r.last_ok_by);
+    tip = latest + ' loaded ' + of(r.last_success, r.last_total) + '. Last run that loaded records: ' +
+          md(r.last_ok_date) + ' by ' + who(r.last_ok_by) + ' (' + of(r.last_ok_success, r.last_ok_total) + ').';
+  } else if(r.run_status === 'no_result'){
+    icon = '<span class="uzio-status uzio-status--warning">&#9888;</span>';
+    sub = md(r.last_run_date) + ' &middot; ' + who(r.run_by);
+    tip = latest + ' recorded no result (crashed or never finished).';
+  } else {
+    icon = '<span class="uzio-status uzio-status--success">&#10003;</span>';
+    sub = md(r.last_run_date) + ' &middot; ' + who(r.run_by);
+    tip = latest + (r.last_total != null ? ': ' + of(r.last_success, r.last_total) + ' loaded.' : '.');
+  }
+  return { html: icon + '<div class="sub">' + sub + '</div>', tip: tip };
 }
 
 function daysFromToday(n){
@@ -2245,10 +2362,11 @@ function renderApi(){
   const body = MODULES.map(m =>
     '<tr><td class="sticky-col">' + esc(m[1]) + '</td>' + list.map(c => {
       const r = c.runs[m[0]];
-      if(r) return '<td class="mcell" data-code="' + esc(c.code) + '">' +
-        '<span class="uzio-status uzio-status--success">&#10003;</span>' +
-        '<div class="sub">' + (r.last_run_date ? r.last_run_date.slice(5).replace('-', '/') : '') +
-        ' &middot; ' + esc((r.run_by || '').split('.')[0]) + '</div></td>';
+      if(r){
+        const cell = apiCell(r);
+        return '<td class="mcell" data-code="' + esc(c.code) + '" title="' + esc(cell.tip) + '">' +
+          cell.html + '</td>';
+      }
       return '<td class="mcell" data-code="' + esc(c.code) + '">' +
         '<span class="uzio-status uzio-status--error">&#10007;</span></td>';
     }).join('') + '</tr>'
@@ -2270,6 +2388,7 @@ function renderApi(){
         '<button class="uzio-filter-chip" data-val="none"><span class="uzio-filter-chip__dot" style="background:' + DOT.bad + '"></span>Not started</button>' +
         '<button class="uzio-filter-chip" data-val="partial"><span class="uzio-filter-chip__dot" style="background:' + DOT.warn + '"></span>In progress</button>' +
         '<button class="uzio-filter-chip" data-val="done"><span class="uzio-filter-chip__dot" style="background:' + DOT.good + '"></span>All run</button>' +
+        '<button class="uzio-filter-chip" data-val="failed"><span class="uzio-filter-chip__dot" style="background:' + DOT.warn + '"></span>Has failed runs</button>' +
       '</div>' +
     '</div>' +
     '<div class="filter-bar">' +
@@ -2301,8 +2420,10 @@ function renderApi(){
     '<div class="table-shell"><table class="uzio-table matrix-table" id="matrixTable">' +
       '<thead><tr><th class="sticky-col">Module</th>' + th + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
     '<p style="font-size:11.5px;color:var(--uzio-color-text-faint);margin:8px 0 0">' +
-      'Run log is a manual export, current to <b>' + esc(logCurrentTo || 'unknown') + '</b> — a cross can mean ' +
-      '“not run” or “run after that date and not exported yet”. DSPs new to the platform are not shown.</p>';
+      'Read from the prod onboarding run log, newest run <b>' + esc(logCurrentTo || 'unknown') + '</b>. ' +
+      '&#10003; loaded records &middot; &#9888; latest run loaded nothing (the date shown is the last run that did) &middot; ' +
+      '&#10007; with a date = ran, but no run has ever loaded a record &middot; &#10007; alone = never run. ' +
+      'Hover a cell for counts. DSPs new to the platform are not shown.</p>';
 
   const table = el.querySelector('#matrixTable');
   const ths = Array.from(table.querySelectorAll('thead th[data-code]'));
@@ -2316,7 +2437,8 @@ function renderApi(){
     if(state.q && c.name.toLowerCase().indexOf(state.q) === -1 &&
        c.code.toLowerCase().indexOf(state.q) === -1) return false;
     if(state.source !== 'all' && c.vendor !== state.source) return false;
-    if(state.progress !== 'all' && c.progress !== state.progress) return false;
+    if(state.progress === 'failed'){ if(!c.failed) return false; }
+    else if(state.progress !== 'all' && c.progress !== state.progress) return false;
     if(state.goLive !== 'any'){
       // Upcoming go-lives only. A DSP with no date on the selected field cannot
       // be placed in the window, so it drops out rather than being assumed soon.
@@ -2482,9 +2604,9 @@ function renderOpen(rows){
         (r.completed_at ? ' on ' + esc(fmtDatePlain(String(r.completed_at).slice(0, 10))) : '') +
         '</div>'
       : '';
-    const btn = isDone
-      ? '<button class="oi-btn oi-btn--ghost oi-btn--mini" data-reopen="' + r.id + '">Reopen</button>'
-      : '<button class="oi-btn oi-btn--mini" data-done="' + r.id + '">Mark as done</button>';
+    /* Frozen 2026-09-28: items moved to the DSP CRM Tracker, so the write
+       actions (add / done / reopen) are gone and this list is an archive. */
+    const btn = '';
     return '<div class="uzio-item uzio-item--' + cls + (isDone ? ' uzio-item--done' : '') + '"' +
       ' data-sev="' + esc(r.severity) + '" data-status="' + esc(r.status) + '"' +
       ' data-text="' + esc(((r.title || '') + ' ' + (r.description || '') + ' ' +
@@ -2511,18 +2633,13 @@ function renderOpen(rows){
     SEV.map(([sev]) => block(sev, sev, rest.filter(r => r.severity === sev))).join('') +
     block('__done', 'Done', done);
 
-  const me = getMe();
   const bar =
-    '<div class="oi-bar">' +
-      '<button class="oi-btn" id="oiToggle">+ Add item</button>' +
-      '<div class="oi-me">' +
-        '<label for="oiMe">You are</label>' +
-        '<input class="oi-input oi-input--sm" id="oiMe" maxlength="60" placeholder="Your name"' +
-          ' value="' + esc(me) + '">' +
-      '</div>' +
-    '</div>';
+    '<div class="oi-crm-banner">Open items now live in the ' +
+      '<a href="https://crm-teal-chi-45.vercel.app" target="_blank" rel="noopener">DSP CRM Tracker</a>' +
+      ' — add and work items there. This list is a frozen archive as of 28 Sep 2026; ' +
+      'everything below was carried over into the CRM as tasks with full history.</div>';
 
-  el.innerHTML = bar + openFormHtml() + buildFilters(OPEN_FILTERS) + groups;
+  el.innerHTML = bar + buildFilters(OPEN_FILTERS) + groups;
 
   const records = Array.from(el.querySelectorAll('.uzio-item')).map(it => ({
     el: it, sev: it.dataset.sev, status: it.dataset.status, text: it.dataset.text
@@ -2536,7 +2653,6 @@ function renderOpen(rows){
 
   wireOpenOnce(el);
   syncOpenBlocks(el);
-  wireOpenForm(el);
 }
 
 // A severity heading with every item filtered out would just be a dangling
@@ -3184,7 +3300,7 @@ const FRESH_SOURCES = [
    srcCol:'checked_date',  srcLabel:'mail dated'},
   {label:'Document Transfer',     table:'document_transfer',        note:'Document Upload Status thread',
    srcCol:'transfer_date', srcLabel:'latest transfer'},
-  {label:'API Activity',          table:'api_activity_runs',        note:'PHIX-72859 export (hand-dropped)',
+  {label:'API Activity',          table:'api_activity_runs',        note:'prod onboarding run log',
    srcCol:'last_run_date', srcLabel:'newest run'},
   {label:'Payroll Health',        table:'payroll_health',           note:'prod pay-run gaps'}
 ];
@@ -3350,6 +3466,12 @@ async function loadAll(){
       .then(r => { DATA.api = r; out.api = renderApi(); }).catch(fail('api-content')),
     sbGet('client_data_coverage?select=*&order=company_name.asc')
       .then(r => { DATA.coverage = r; out.coverage = renderCoverage(); }).catch(fail('coverage-content')),
+    // What the system itself records, as opposed to what the sheet says: first
+    // real TT punch and first approved Uzio pay run, per client. Only read on
+    // the client sub-page, so a failure here must not fail any main view.
+    sbGet('client_system_activity?select=*')
+      .then(r => { (r || []).forEach(x => { DATA.sysActivity[x.dsp_short_code] = x; }); })
+      .catch(() => {}),
     sbGet('payroll_health?select=*&order=gap_days.desc')
       .then(r => { DATA.health = r; out.health = renderHealth(r); }).catch(fail('health-content')),
     sbGet('open_items?select=*&order=date_added.desc')

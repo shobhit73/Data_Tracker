@@ -17,6 +17,10 @@ STMTS = [
     'drop policy if exists "anon_update" on open_items',
     "revoke insert on open_items from anon, authenticated",
     "revoke update on open_items from anon, authenticated",
+    # Leftovers from the project's initial blanket grant, spotted in the first
+    # run's report. PostgREST never exposes these, and TRUNCATE in particular
+    # is not gated by RLS — nothing should hold it but the owner.
+    "revoke truncate, references, trigger on open_items from anon, authenticated",
 ]
 
 

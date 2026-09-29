@@ -66,6 +66,16 @@ is fire-and-forget (`#cd-platform` + `loadPlatformPanel` in views-data.js;
 never breaks on missing data. Join key = the CRM client's `short_code`; the
 API section joins via the profile's FEIN, the transfer record by name match.
 
+**Redesigned same day** after Shobhit's review ("information bohot jyada,
+repeated"): the panel is now three targets, not eight cards — profile facts as
+header **chips** (`#cd-chips`), one **at-a-glance strip** (`#cd-glance`) whose
+numbers click through to the Data tabs, and five **collapsed** sections
+(System go-live, Benefits, Documents, APIs, Locations). Benefits requirement/
+details are deduped when one contains the other. Page order now puts tasks
+first and Activity last; Activity folds past 8 entries; every long note folds
+to two lines via `clampHtml` (views-admin.js) + `.clamp` (styles.css). A Beck
+page that ran ~7 screens is ~2.5 with nothing lost, only folded.
+
 ## Standing notes
 
 - These five tables are **read-only reporting copies**. The sources stay on

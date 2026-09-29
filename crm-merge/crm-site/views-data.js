@@ -210,29 +210,57 @@ async function docsTab() {
    (Phase 4 of the merge). Read-only; empty sections are simply left out, and
    a fetch problem shows one muted line instead of breaking the page. --- */
 async function loadPlatformPanel(c) {
+  const chipsEl = document.getElementById("cd-chips");
+  const glanceEl = document.getElementById("cd-glance");
   const el = document.getElementById("cd-platform");
-  if (!el) return;
+  if (!chipsEl && !glanceEl && !el) return;
   let b;
   try { b = await Store.getPlatformBundle(c.short_code); }
-  catch (e) { el.innerHTML = `<p class="muted">Platform data unavailable (${esc(e.message)}).</p>`; return; }
+  catch (e) { if (el) el.innerHTML = `<p class="muted">Platform data unavailable (${esc(e.message)}).</p>`; return; }
 
   const dmy = (d) => d ? esc(String(d).slice(0, 10)) : "—";
   const row = (label, val) => (val === null || val === undefined || val === "" || val === "—")
     ? "" : `<tr><td class="muted" style="width:220px">${label}</td><td>${val}</td></tr>`;
-  const card = (title, inner) => inner
-    ? `<div class="card"><h2 style="margin-top:0">${title}</h2>${inner}</div>` : "";
   const tbl = (rows) => rows ? `<table class="grid"><tbody>${rows}</tbody></table>` : "";
-
+  const sect = (title, inner) => inner
+    ? `<details class="cgroup"><summary><b>${title}</b></summary><div style="padding:0 14px 12px">${inner}</div></details>` : "";
   const p = b.profile, s = b.sys, cov = b.cov;
-  const profileRows = p ? [
-    row("FEIN", p.fein ? esc(p.fein) : null),
-    row("State", esc(p.state || "")),
-    row("Pay frequency", esc(p.frequency || "")),
-    row("Benefits", esc(p.benefits_requirement || "")),
-    row("Benefits details", esc(p.benefits_details || "")),
-    row("Deductions via", esc(p.benefits_deductions_via || "")),
-    row("Payroll live", dmy(p.payroll_live_date) === "—" ? null : dmy(p.payroll_live_date)),
-  ].join("") : "";
+
+  /* Header chips: the three-line profile card was overkill for three facts. */
+  if (chipsEl && p) {
+    chipsEl.innerHTML = [
+      p.fein ? `<span class="chip">FEIN ${esc(p.fein)}</span>` : "",
+      p.state ? `<span class="chip">${esc(p.state)}</span>` : "",
+      p.frequency ? `<span class="chip">Pay ${esc(p.frequency)}</span>` : "",
+      p.payroll_live_date ? `<span class="chip">Payroll live ${dmy(p.payroll_live_date)}</span>` : "",
+    ].join("");
+  }
+
+  /* At a glance: one number per topic, each clicking through to its Data tab.
+     The full tables live there - repeating them per client is what made the
+     page seven screens long. */
+  if (glanceEl) {
+    const stat = (hash, label, val) => val
+      ? `<a href="${hash}" style="color:inherit"><span class="muted">${label}</span>&nbsp;<b>${val}</b></a>` : "";
+    const okCount = (b.api || []).filter((r) => r.run_status === "ok" || r.last_ok_date).length;
+    const hc = b.hist;
+    const items = [
+      cov ? stat("#data/coverage", "Coverage",
+        `${dpct(cov.active_with_payment_method, cov.active_employees) ?? "?"}% pay · ${dpct(cov.active_with_emergency_contact, cov.active_employees) ?? "?"}% emg · ${dpct(cov.active_with_worker_comp, cov.active_employees) ?? "?"}% wc`) : "",
+      hc ? stat("#data/hist", "Historical",
+        `${dpct(hc.received, hc.received + hc.pending) ?? 0}%${hc.pending ? ` (${hc.pending} left)` : ""}`) : "",
+      b.health ? stat("#data/health", "Payroll health",
+        dpill(b.health.status || "?", b.health.status === "Covered" ? "pill-done" : b.health.status === "New to platform" ? "pill-na" : "pill-cancelled")) : "",
+      b.docs ? stat("#data/docs", "Documents",
+        `${b.docs.documents ?? 0} · ${dpct(b.docs.employees_with_docs, b.docs.total_employees) ?? "?"}% employees`) : "",
+      b.api && b.api.length ? stat("#data/api", "APIs", `${okCount}/${API_MODULES.length} ✓`) : "",
+      s && s.pr_normal_runs != null ? `<span><span class="muted">Pay runs</span>&nbsp;<b>${s.pr_normal_runs}</b></span>` : "",
+    ].filter(Boolean);
+    glanceEl.innerHTML = items.length
+      ? `<div class="card" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:0">${items.join("")}</div>` : "";
+  }
+
+  if (!el) return;
 
   const sysRows = s ? [
     row("TT setup", s.tt_setup_completed ? "Completed" : "Not completed"),
@@ -244,18 +272,26 @@ async function loadPlatformPanel(c) {
     row("Checked", dmy(s.checked_date)),
   ].join("") : "";
 
-  const covRows = cov ? [
-    row("Employees", `${cov.active_employees ?? "?"} active · ${cov.total_employees ?? "?"} total`),
-    row("Payment method", dbar(dpct(cov.active_with_payment_method, cov.active_employees))),
-    row("Emergency contact", dbar(dpct(cov.active_with_emergency_contact, cov.active_employees))),
-    row("Licence", dbar(dpct(cov.active_with_licence, cov.active_employees))),
-    row("Worker comp", dbar(dpct(cov.active_with_worker_comp, cov.active_employees))),
+  /* Benefits: the tracker's requirement and details columns overlap - when
+     one contains the other, show it once. */
+  const nrm = (t) => String(t || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const req = p && p.benefits_requirement, det = p && p.benefits_details;
+  const benRows = (req || det) ? [
+    row("Benefits", clampHtml(det || req)),
+    (req && det && !nrm(det).includes(nrm(req).slice(0, 80))) ? row("Requirement", clampHtml(req)) : "",
+    row("Deductions via Uzio", esc((p && p.benefits_deductions_via) || "")),
   ].join("") : "";
 
-  const locRows = (b.locs || []).map((l) => `<div class="act-row">
-      <b>${esc(l.work_location_name || "")}</b>${l.is_primary ? ` <span class="chip">Primary</span>` : ""}
-      <div class="muted" style="font-size:12px">${esc([l.address_line1, l.address_line2, l.city, l.state, l.zip_code].filter(Boolean).join(", "))}</div>
-    </div>`).join("");
+  const norm2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const tr = (b.transfers || []).find((t) => {
+    const a = norm2(t.client_name), z = norm2(c.dsp_name);
+    return a && z && (a.includes(z) || z.includes(a));
+  });
+  const docRows = (b.docs || tr) ? [
+    b.docs ? row("In the database", `${b.docs.documents ?? 0} documents · ${b.docs.employees_with_docs ?? 0} of ${b.docs.total_employees ?? "?"} employees ${dbar(dpct(b.docs.employees_with_docs, b.docs.total_employees))}`) : "",
+    tr ? row("Transfer", `${dpill(tr.status || "?", tr.status === "Complete" ? "pill-done" : "pill-onhold")} ${dmy(tr.transfer_date)} · ${tr.total_docs ?? "—"} docs${tr.failed_docs ? ` · <span class="overdue">${tr.failed_docs} failed</span>` : ""}`) : "",
+    tr && tr.notes ? row("Transfer notes", `<span class="note">${clampHtml(tr.notes)}</span>`) : "",
+  ].join("") : "";
 
   const apiByModule = {};
   (b.api || []).forEach((r) => { apiByModule[r.module_key] = r; });
@@ -267,44 +303,21 @@ async function loadPlatformPanel(c) {
     return dpill(label + " ✕", "pill-cancelled");
   }).join(" ") : "";
 
-  const norm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const tr = (b.transfers || []).find((t) => {
-    const a = norm(t.client_name), z = norm(c.dsp_name);
-    return a && z && (a.includes(z) || z.includes(a));
-  });
-  const docRows = (b.docs || tr) ? [
-    b.docs ? row("In the database", `${b.docs.documents ?? 0} documents · ${b.docs.employees_with_docs ?? 0} of ${b.docs.total_employees ?? "?"} employees ${dbar(dpct(b.docs.employees_with_docs, b.docs.total_employees))}`) : "",
-    tr ? row("Transfer", `${dpill(tr.status || "?", tr.status === "Complete" ? "pill-done" : "pill-onhold")} ${dmy(tr.transfer_date)} · ${tr.total_docs ?? "—"} docs${tr.failed_docs ? ` · <span class="overdue">${tr.failed_docs} failed</span>` : ""}`) : "",
-    tr && tr.notes ? row("Transfer notes", `<span class="note">${esc(tr.notes)}</span>`) : "",
-  ].join("") : "";
-
-  const h = b.health;
-  const healthRows = h ? [
-    row("Status", dpill(h.status || "?", h.status === "Covered" ? "pill-done" : h.status === "New to platform" ? "pill-na" : "pill-cancelled")),
-    row("Prior payroll data", h.prior_from ? `${dmy(h.prior_from)} → ${dmy(h.prior_to)} · ${h.prior_rows ?? 0} rows` : null),
-    row("Uzio runs", h.normal_from ? `${dmy(h.normal_from)} → ${dmy(h.normal_to)} · ${h.normal_rows ?? 0} rows` : null),
-    row("Gap", h.gap_days ? `<span class="overdue">${h.gap_days} days</span> ${esc(h.gap_ranges || "")}` : "None"),
-  ].join("") : "";
-
-  const hc = b.hist;
-  const histRows = hc ? [
-    row("Progress", `${dbar(dpct(hc.received, hc.received + hc.pending))} · ${hc.received} of ${hc.received + hc.pending} received${hc.not_applicable ? ` · ${hc.not_applicable} n/a` : ""}`),
-    row("Still to collect", hc.pending ? `${hc.pending} report(s) — <a href="#data/hist">see the list</a>` : "Nothing"),
-    row("Last scanned", dmy(hc.last_scanned)),
-  ].join("") : "";
+  const locRows = (b.locs || []).map((l) => `<div class="act-row">
+      <b>${esc(l.work_location_name || "")}</b>${l.is_primary ? ` <span class="chip">Primary</span>` : ""}
+      <div class="muted" style="font-size:12px">${esc([l.address_line1, l.address_line2, l.city, l.state, l.zip_code].filter(Boolean).join(", "))}</div>
+    </div>`).join("");
 
   const html =
-    card("Platform profile", tbl(profileRows)) +
-    card("System go-live — what prod shows", tbl(sysRows)) +
-    card("Employee data coverage", tbl(covRows)) +
-    card("Historical data", tbl(histRows)) +
-    card("Payroll health", tbl(healthRows)) +
-    card("Documents", tbl(docRows)) +
-    card("Onboarding APIs", apiChips ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${apiChips}</div>` : "") +
-    card("Work locations", locRows);
+    sect("System go-live — what prod shows", tbl(sysRows)) +
+    sect("Benefits", tbl(benRows)) +
+    sect("Documents", tbl(docRows)) +
+    sect("Onboarding APIs", apiChips ? `<div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:8px">${apiChips}</div>` : "") +
+    sect("Work locations", locRows);
   el.innerHTML = html ||
     `<p class="muted">No platform data for this client yet (it appears after the daily pushes).</p>`;
 }
+
 
 /* --- Historical: the DSP Historical Data Tracker sheet, mirrored here after
    every daily 17:30 IST run. The sheet is the source of truth — fix statuses

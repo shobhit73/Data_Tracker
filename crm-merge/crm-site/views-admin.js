@@ -1,6 +1,15 @@
 /* Admin views. renderClientDetail is shared with the implementor screen. */
 window.Views = window.Views || {};
 
+/* Long text folds to two lines; a click unfolds it. Imported notes run to
+   whole paragraphs, and unclamped they repeat themselves down the page. */
+function clampHtml(text) {
+  const t = String(text ?? "");
+  return t.length > 220
+    ? `<span class="clamp" title="click to expand" onclick="this.classList.toggle('open')">${esc(t)}</span>`
+    : esc(t);
+}
+
 const STATUS_OPTS = ["Open", "In Progress", "Done", "N/A"];
 const CLIENT_STATUS_OPTS = ["Not Started", "In Progress", "Live", "Completed", "Cancelled", "On Hold", "Unresponsive"];
 
@@ -319,7 +328,7 @@ Views.renderClientDetail = async (view, id) => {
     const editable = canWork(t);
     const notes = (t.task_notes || []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
     const noteLine = (n) =>
-      `<div class="note">"${esc(n.note)}" — ${esc(n.author?.name || "sync")}, ${n.created_at.slice(0, 10)}</div>`;
+      `<div class="note">"${clampHtml(n.note)}" — ${esc(n.author?.name || "sync")}, ${n.created_at.slice(0, 10)}</div>`;
     const due = !t.template_id && t.due_date
       ? ` <span class="${t.due_date < todayIsoLocal && t.status !== "Done" ? "overdue" : "muted"}">due ${t.due_date}</span>` : "";
     const selCls = { "Done": "sel-done", "In Progress": "sel-inprogress", "N/A": "sel-na" }[t.status] || "";
@@ -346,8 +355,8 @@ Views.renderClientDetail = async (view, id) => {
     <td><input type="checkbox" class="m-training" ${m.training_done ? "checked" : ""} ${dis}></td>
     <td><input type="date" class="m-date" value="${m.training_date || ""}" ${dis}></td>
     <td class="notes-cell">
-      ${latest ? `<div class="note">"${esc(latest.note)}" — ${esc(latest.author?.name || "sync")}, ${latest.created_at.slice(0, 10)}</div>` : `<span class="muted">no notes</span>`}
-      ${notes.length > 1 ? `<details><summary class="muted">${notes.length - 1} more</summary>${notes.slice(1).map((n) => `<div class="note">"${esc(n.note)}" — ${esc(n.author?.name || "sync")}, ${n.created_at.slice(0, 10)}</div>`).join("")}</details>` : ""}
+      ${latest ? `<div class="note">"${clampHtml(latest.note)}" — ${esc(latest.author?.name || "sync")}, ${latest.created_at.slice(0, 10)}</div>` : `<span class="muted">no notes</span>`}
+      ${notes.length > 1 ? `<details><summary class="muted">${notes.length - 1} more</summary>${notes.slice(1).map((n) => `<div class="note">"${clampHtml(n.note)}" — ${esc(n.author?.name || "sync")}, ${n.created_at.slice(0, 10)}</div>`).join("")}</details>` : ""}
       <button class="m-note small secondary" type="button">+ note</button>
     </td></tr>`; };
 
@@ -363,6 +372,7 @@ Views.renderClientDetail = async (view, id) => {
                  return m ? `<span class="chip">Audit folder ${esc(m[1])}</span>` : ""; })()}
       <span class="chip">Onboarding ${pct(tasksFor("onboarding"))}%</span>
       <span class="chip">Audit ${pct(tasksFor("audit"))}%</span>
+      <span id="cd-chips" style="display:contents"></span>
     </div>
     <div class="card head-grid">
       <label>Status <select id="c-status" ${dis}>
@@ -379,24 +389,6 @@ Views.renderClientDetail = async (view, id) => {
       <label>Payroll cutoff <input id="c-cutoff" type="date" value="${c.payroll_cutoff_date || ""}" ${dis}></label>
       <label>First pay <input id="c-pay" type="date" value="${c.first_pay_date || ""}" ${dis}></label>
     </div>
-    <div class="card">
-      <h2 style="margin-top:0">Modules &amp; training</h2>
-      <table class="grid"><thead><tr><th>Module</th><th>Opted</th><th>Training done</th><th>Training date</th><th>Notes</th></tr></thead>
-      <tbody>${c.client_modules.slice()
-        .sort((a, b) => CONFIG.MODULES.indexOf(a.module) - CONFIG.MODULES.indexOf(b.module))
-        .map(moduleRow).join("")}</tbody></table>
-    </div>
-    <div class="card">
-      <h2 style="margin-top:0">Company notes</h2>
-      <div id="company-notes">
-      ${(() => { const notes = modNotes("Company");
-        return notes.length ? notes.map((n) => `<div class="act-row"><span class="when">${n.created_at.slice(0, 10)}</span> <b>${esc(n.author?.name || "sync")}</b> ${esc(n.note)}</div>`).join("") : `<p class="muted">No company notes yet.</p>`; })()}
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <input id="company-note-input" placeholder="Add a company-level note…" style="flex:1">
-        <button id="company-note-add" type="button">Add</button>
-      </div>
-    </div>
     ${isMigrating(c) ? `<div class="tabbar">
       <button id="tab-onb" class="active" type="button">Onboarding (${tasksFor("onboarding").length})</button>
       <button id="tab-aud" type="button">Audit (${tasksFor("audit").length})</button>
@@ -407,14 +399,39 @@ Views.renderClientDetail = async (view, id) => {
       <input id="adhoc-due" type="date">
       <button id="adhoc-add" type="button">Add task</button>
     </div>` : ""}
+    <div id="cd-glance" style="margin-top:14px"></div>
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Modules &amp; training</h2>
+      <table class="grid"><thead><tr><th>Module</th><th>Opted</th><th>Training done</th><th>Training date</th><th>Notes</th></tr></thead>
+      <tbody>${c.client_modules.slice()
+        .sort((a, b) => CONFIG.MODULES.indexOf(a.module) - CONFIG.MODULES.indexOf(b.module))
+        .map(moduleRow).join("")}</tbody></table>
+    </div>
+    <div id="cd-platform" style="margin-top:14px"></div>
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Company notes</h2>
+      <div id="company-notes">
+      ${(() => { const notes = modNotes("Company");
+        return notes.length ? notes.map((n) => `<div class="act-row"><span class="when">${n.created_at.slice(0, 10)}</span> <b>${esc(n.author?.name || "sync")}</b> ${clampHtml(n.note)}</div>`).join("") : `<p class="muted">No company notes yet.</p>`; })()}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input id="company-note-input" placeholder="Add a company-level note…" style="flex:1">
+        <button id="company-note-add" type="button">Add</button>
+      </div>
+    </div>
     <div class="card" style="margin-top:14px">
       <h2 style="margin-top:0">Activity</h2>
-      ${activity.length ? activity.map((a) => `<div class="act-row">
-          <span class="when">${a.created_at.slice(0, 16).replace("T", " ")}</span>
-          <b>${esc(a.actor?.name || "sync")}</b> ${esc(a.detail)}</div>`).join("")
-        : `<p class="muted">No activity recorded yet.</p>`}
-    </div>
-    <div id="cd-platform" style="margin-top:14px"><p class="muted">Loading platform data…</p></div>`;
+      ${(() => {
+        if (!activity.length) return `<p class="muted">No activity recorded yet.</p>`;
+        const rowA = (a) => `<div class="act-row">
+            <span class="when">${a.created_at.slice(0, 16).replace("T", " ")}</span>
+            <b>${esc(a.actor?.name || "sync")}</b> ${clampHtml(a.detail)}</div>`;
+        const rest = activity.slice(8);
+        return activity.slice(0, 8).map(rowA).join("") + (rest.length
+          ? `<details><summary class="muted">${rest.length} older entries</summary>${rest.map(rowA).join("")}</details>`
+          : "");
+      })()}
+    </div>`;
 
   // Fills #cd-platform from the read-only reporting tables (views-data.js).
   // Fire-and-forget: the core page never waits on it and never breaks with it.

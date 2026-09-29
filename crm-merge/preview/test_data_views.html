@@ -26,6 +26,12 @@ function esc(v) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function fmtDate(d) { return d || "—"; }
+function clampHtml(text) {   // real one lives in views-admin.js, not loaded here
+  const t = String(text ?? "");
+  return t.length > 220
+    ? `<span class="clamp" title="click to expand" onclick="this.classList.toggle('open')">${esc(t)}</span>`
+    : esc(t);
+}
 window.Store = {
   listApiActivity:       async () => FIXTURE.api_activity_runs,
   listPayrollHealth:     async () => FIXTURE.payroll_health,
@@ -56,7 +62,10 @@ const route = () => {
   if (name === "detail") {   // #detail/<CODE> exercises the Client 360 platform panel
     const p = (FIXTURE.client_profile || []).find((r) => r.dsp_short_code === arg) || {};
     $("#view").innerHTML = `<div class="page-head"><h1>${esc(p.dsp_name || arg)} <span class="muted">${esc(arg)}</span></h1></div>
-      <div id="cd-platform"><p class="muted">Loading platform data…</p></div>`;
+      <div style="margin:-6px 0 12px;display:flex;gap:8px;flex-wrap:wrap"><span id="cd-chips" style="display:contents"></span></div>
+      <p class="muted">[tasks would sit here]</p>
+      <div id="cd-glance"></div>
+      <div id="cd-platform" style="margin-top:14px"></div>`;
     loadPlatformPanel({ short_code: arg, dsp_name: p.dsp_name || arg });
     return;
   }

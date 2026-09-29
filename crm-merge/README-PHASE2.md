@@ -38,7 +38,7 @@ One new nav item **Data** (admin + implementor), four tabs:
 4. After the CRM shows the data: freeze the four views on the old dashboard
    with the same "moved to CRM" banner Open Items got.
 
-## Phase 3 — Historical (built 29 Sep 2026, deploy pending)
+## Phase 3 — Historical (SHIPPED 29 Sep 2026, CRM commit `5528ffd`)
 
 The Google Sheet stays the source of truth and the 17:30 IST mail is untouched.
 `apps-script/Code.gs` gained a CRM PUSH section: after every daily run (and via

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSP CRM Tracker</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="toast"></div>
+
+<section id="login">
+  <div class="login-card">
+    <h1>DSP CRM Tracker</h1>
+    <div class="tabs">
+      <button id="tab-signin" class="active" type="button">Sign in</button>
+      <button id="tab-signup" type="button">Sign up</button>
+    </div>
+    <form id="login-form">
+      <input id="f-name" placeholder="Full name" autocomplete="name" style="display:none">
+      <input id="f-email" type="email" placeholder="you@uzio.com" autocomplete="username" required>
+      <input id="f-password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required>
+      <input id="f-password2" type="password" placeholder="Confirm password" autocomplete="new-password" minlength="8" style="display:none">
+      <button type="submit" id="login-submit">Sign in</button>
+    </form>
+    <p class="hint">Use your @uzio.com email.</p>
+    <p class="hint"><a href="#" id="forgot">Forgot password?</a></p>
+  </div>
+</section>
+
+<section id="reset" style="display:none">
+  <div class="login-card">
+    <h1>Set a new password</h1>
+    <form id="reset-form">
+      <input id="r-password" type="password" placeholder="New password" autocomplete="new-password" minlength="8" required>
+      <input id="r-password2" type="password" placeholder="Repeat new password" autocomplete="new-password" minlength="8" required>
+      <button type="submit">Update password</button>
+    </form>
+    <p class="hint">You'll be signed in after updating.</p>
+  </div>
+</section>
+
+<div id="app" style="display:none">
+  <nav id="nav">
+    <div class="brand">DSP CRM</div>
+    <div id="nav-items"></div>
+    <div class="nav-foot"><span id="who"></span><button id="signout" type="button">Sign out</button></div>
+  </nav>
+  <main id="view"></main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
+<script src="views-admin.js"></script>
+<script src="views-user.js"></script>
+<script src="views-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

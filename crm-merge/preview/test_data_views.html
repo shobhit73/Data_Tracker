@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- Local harness for views-data.js: real CRM styles, real data (fixture.js
+     dumped from our Supabase), Store stubbed — no login, no network. Serves
+     only to eyeball the four tabs before the code goes into the CRM repo. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>views-data.js harness</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app" style="display:flex">
+  <nav id="nav">
+    <div class="brand">DSP CRM (harness)</div>
+    <div id="nav-items"><a href="#data" data-nav="data" class="active">Data</a></div>
+  </nav>
+  <main id="view"></main>
+</div>
+<script src="fixture.js"></script>
+<script>
+/* Just enough of app.js/store.js for views-data.js to run. */
+const $ = (s) => document.querySelector(s);
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtDate(d) { return d || "—"; }
+window.Store = {
+  listApiActivity:       async () => FIXTURE.api_activity_runs,
+  listPayrollHealth:     async () => FIXTURE.payroll_health,
+  listDataCoverage:      async () => FIXTURE.client_data_coverage,
+  listDocumentTransfers: async () => FIXTURE.document_transfer,
+  listDocumentCounts:    async () => FIXTURE.client_document_counts,
+};
+</script>
+<script src="../crm-site/views-data.js"></script>
+<script>
+const route = () => {
+  const [, arg] = location.hash.replace(/^#/, "").split("/");
+  Views.renderData($("#view"), arg).catch((e) => {
+    $("#view").innerHTML = "<pre style='color:red'>" + esc(e.stack) + "</pre>";
+  });
+};
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>

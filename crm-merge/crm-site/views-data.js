@@ -205,6 +205,107 @@ async function docsTab() {
   return render;
 }
 
+/* --- Client 360 platform panel: the ops-dashboard facts for ONE client,
+   rendered into #cd-platform at the bottom of the client detail page
+   (Phase 4 of the merge). Read-only; empty sections are simply left out, and
+   a fetch problem shows one muted line instead of breaking the page. --- */
+async function loadPlatformPanel(c) {
+  const el = document.getElementById("cd-platform");
+  if (!el) return;
+  let b;
+  try { b = await Store.getPlatformBundle(c.short_code); }
+  catch (e) { el.innerHTML = `<p class="muted">Platform data unavailable (${esc(e.message)}).</p>`; return; }
+
+  const dmy = (d) => d ? esc(String(d).slice(0, 10)) : "—";
+  const row = (label, val) => (val === null || val === undefined || val === "" || val === "—")
+    ? "" : `<tr><td class="muted" style="width:220px">${label}</td><td>${val}</td></tr>`;
+  const card = (title, inner) => inner
+    ? `<div class="card"><h2 style="margin-top:0">${title}</h2>${inner}</div>` : "";
+  const tbl = (rows) => rows ? `<table class="grid"><tbody>${rows}</tbody></table>` : "";
+
+  const p = b.profile, s = b.sys, cov = b.cov;
+  const profileRows = p ? [
+    row("FEIN", p.fein ? esc(p.fein) : null),
+    row("State", esc(p.state || "")),
+    row("Pay frequency", esc(p.frequency || "")),
+    row("Benefits", esc(p.benefits_requirement || "")),
+    row("Benefits details", esc(p.benefits_details || "")),
+    row("Deductions via", esc(p.benefits_deductions_via || "")),
+    row("Payroll live", dmy(p.payroll_live_date) === "—" ? null : dmy(p.payroll_live_date)),
+  ].join("") : "";
+
+  const sysRows = s ? [
+    row("TT setup", s.tt_setup_completed ? "Completed" : "Not completed"),
+    row("TT enrolled", s.tt_enrolled_employees),
+    row("First / last punch", s.tt_first_entry_date ? `${dmy(s.tt_first_entry_date)} → ${dmy(s.tt_last_entry_date)} · ${s.tt_employees_punched ?? "?"} employees` : null),
+    row("TT entries", s.tt_live_entries != null ? `${s.tt_live_entries} live · ${s.tt_imported_entries ?? 0} imported` : null),
+    row("Pay runs", s.pr_normal_runs ? `${s.pr_normal_runs} (${dmy(s.pr_first_normal_date)} → ${dmy(s.pr_last_normal_date)}, last covered ${s.pr_last_run_employees ?? "?"} employees)` : "None yet"),
+    row("Prior payroll loads", s.pr_prior_loads),
+    row("Checked", dmy(s.checked_date)),
+  ].join("") : "";
+
+  const covRows = cov ? [
+    row("Employees", `${cov.active_employees ?? "?"} active · ${cov.total_employees ?? "?"} total`),
+    row("Payment method", dbar(dpct(cov.active_with_payment_method, cov.active_employees))),
+    row("Emergency contact", dbar(dpct(cov.active_with_emergency_contact, cov.active_employees))),
+    row("Licence", dbar(dpct(cov.active_with_licence, cov.active_employees))),
+    row("Worker comp", dbar(dpct(cov.active_with_worker_comp, cov.active_employees))),
+  ].join("") : "";
+
+  const locRows = (b.locs || []).map((l) => `<div class="act-row">
+      <b>${esc(l.work_location_name || "")}</b>${l.is_primary ? ` <span class="chip">Primary</span>` : ""}
+      <div class="muted" style="font-size:12px">${esc([l.address_line1, l.address_line2, l.city, l.state, l.zip_code].filter(Boolean).join(", "))}</div>
+    </div>`).join("");
+
+  const apiByModule = {};
+  (b.api || []).forEach((r) => { apiByModule[r.module_key] = r; });
+  const apiChips = b.api && b.api.length ? API_MODULES.map(([m, label]) => {
+    const r = apiByModule[m];
+    if (!r) return dpill(label + " —", "pill-na");
+    if (r.run_status === "ok" || r.last_ok_date) return dpill(label + " ✓", "pill-done");
+    if (r.run_status === "last_failed") return dpill(label + " !", "pill-onhold");
+    return dpill(label + " ✕", "pill-cancelled");
+  }).join(" ") : "";
+
+  const norm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const tr = (b.transfers || []).find((t) => {
+    const a = norm(t.client_name), z = norm(c.dsp_name);
+    return a && z && (a.includes(z) || z.includes(a));
+  });
+  const docRows = (b.docs || tr) ? [
+    b.docs ? row("In the database", `${b.docs.documents ?? 0} documents · ${b.docs.employees_with_docs ?? 0} of ${b.docs.total_employees ?? "?"} employees ${dbar(dpct(b.docs.employees_with_docs, b.docs.total_employees))}`) : "",
+    tr ? row("Transfer", `${dpill(tr.status || "?", tr.status === "Complete" ? "pill-done" : "pill-onhold")} ${dmy(tr.transfer_date)} · ${tr.total_docs ?? "—"} docs${tr.failed_docs ? ` · <span class="overdue">${tr.failed_docs} failed</span>` : ""}`) : "",
+    tr && tr.notes ? row("Transfer notes", `<span class="note">${esc(tr.notes)}</span>`) : "",
+  ].join("") : "";
+
+  const h = b.health;
+  const healthRows = h ? [
+    row("Status", dpill(h.status || "?", h.status === "Covered" ? "pill-done" : h.status === "New to platform" ? "pill-na" : "pill-cancelled")),
+    row("Prior payroll data", h.prior_from ? `${dmy(h.prior_from)} → ${dmy(h.prior_to)} · ${h.prior_rows ?? 0} rows` : null),
+    row("Uzio runs", h.normal_from ? `${dmy(h.normal_from)} → ${dmy(h.normal_to)} · ${h.normal_rows ?? 0} rows` : null),
+    row("Gap", h.gap_days ? `<span class="overdue">${h.gap_days} days</span> ${esc(h.gap_ranges || "")}` : "None"),
+  ].join("") : "";
+
+  const hc = b.hist;
+  const histRows = hc ? [
+    row("Progress", `${dbar(dpct(hc.received, hc.received + hc.pending))} · ${hc.received} of ${hc.received + hc.pending} received${hc.not_applicable ? ` · ${hc.not_applicable} n/a` : ""}`),
+    row("Still to collect", hc.pending ? `${hc.pending} report(s) — <a href="#data/hist">see the list</a>` : "Nothing"),
+    row("Last scanned", dmy(hc.last_scanned)),
+  ].join("") : "";
+
+  const html =
+    card("Platform profile", tbl(profileRows)) +
+    card("System go-live — what prod shows", tbl(sysRows)) +
+    card("Employee data coverage", tbl(covRows)) +
+    card("Historical data", tbl(histRows)) +
+    card("Payroll health", tbl(healthRows)) +
+    card("Documents", tbl(docRows)) +
+    card("Onboarding APIs", apiChips ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${apiChips}</div>` : "") +
+    card("Work locations", locRows);
+  el.innerHTML = html ||
+    `<p class="muted">No platform data for this client yet (it appears after the daily pushes).</p>`;
+}
+
 /* --- Historical: the DSP Historical Data Tracker sheet, mirrored here after
    every daily 17:30 IST run. The sheet is the source of truth — fix statuses
    there, never here. N/A is excluded from the ratio (expected = received +

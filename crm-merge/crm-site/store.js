@@ -186,6 +186,39 @@ window.Store = (() => {
   const listHistStatus       = () => listReport("hist_status", "dsp_short_code");
   const listHistOutOfScope   = () => listReport("hist_out_of_scope", "dsp_name");
 
+  /* Everything the Client 360 platform panel needs, keyed by the CRM client's
+     short code. Reads warn instead of failing so a reporting table that does
+     not exist yet can never break the detail page itself. */
+  async function listWhere(table, col, val) {
+    const { data, error } = await sb.from(table).select("*").eq(col, val);
+    if (error) { console.warn(`platform panel ${table}:`, error.message); return []; }
+    return data || [];
+  }
+  async function getPlatformBundle(shortCode) {
+    const [profile, sys, locs, cov, docs, health, hist, histPend] = await Promise.all([
+      listWhere("client_profile", "dsp_short_code", shortCode),
+      listWhere("client_system_activity", "dsp_short_code", shortCode),
+      listWhere("client_work_locations", "dsp_short_code", shortCode),
+      listWhere("client_data_coverage", "dsp_short_code", shortCode),
+      listWhere("client_document_counts", "dsp_short_code", shortCode),
+      listWhere("payroll_health", "dsp_short_code", shortCode),
+      listWhere("hist_clients", "dsp_short_code", shortCode),
+      listWhere("hist_status", "dsp_short_code", shortCode)
+        .then((rows) => rows.filter((r) => r.status === "Pending")),
+    ]);
+    const fein = profile[0]?.fein || cov[0]?.fein || sys[0]?.fein || null;
+    // The transfer record has no short code, only a client name — the whole
+    // table is 25 rows, so fetch it and let the panel match by name.
+    const [api, transfers] = await Promise.all([
+      fein ? listWhere("api_activity_runs", "fein", fein) : Promise.resolve([]),
+      sb.from("document_transfer").select("*")
+        .then(({ data, error }) => { if (error) console.warn("platform panel document_transfer:", error.message); return data || []; }),
+    ]);
+    return { profile: profile[0] || null, sys: sys[0] || null, locs,
+             cov: cov[0] || null, docs: docs[0] || null, health: health[0] || null,
+             hist: hist[0] || null, histPend, api, transfers, fein };
+  }
+
   async function getActivity(clientId) {
     const { data, error } = await sb.from("activity_log")
       .select("*, actor:users(name)")
@@ -202,5 +235,6 @@ window.Store = (() => {
            listOpenTasks, listDoneTasks, getTeams, listLastActivity, getActivity,
            listApiActivity, listPayrollHealth, listDataCoverage,
            listDocumentTransfers, listDocumentCounts,
-           listHistClients, listHistStatus, listHistOutOfScope };
+           listHistClients, listHistStatus, listHistOutOfScope,
+           getPlatformBundle };
 })();

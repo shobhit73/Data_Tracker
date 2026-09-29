@@ -35,12 +35,31 @@ window.Store = {
   listHistClients:       async () => FIXTURE.hist_clients,
   listHistStatus:        async () => FIXTURE.hist_status,
   listHistOutOfScope:    async () => FIXTURE.hist_out_of_scope,
+  getPlatformBundle:     async (code) => {
+    const one = (t) => (FIXTURE[t] || []).find((r) => r.dsp_short_code === code) || null;
+    const all = (t) => (FIXTURE[t] || []).filter((r) => r.dsp_short_code === code);
+    const profile = one("client_profile"), cov = one("client_data_coverage"), sys = one("client_system_activity");
+    const fein = profile?.fein || cov?.fein || sys?.fein || null;
+    return { profile, sys, cov, locs: all("client_work_locations"),
+      docs: one("client_document_counts"), health: one("payroll_health"),
+      hist: one("hist_clients"),
+      histPend: all("hist_status").filter((r) => r.status === "Pending"),
+      api: (FIXTURE.api_activity_runs || []).filter((r) => r.fein === fein),
+      transfers: FIXTURE.document_transfer || [], fein };
+  },
 };
 </script>
 <script src="../crm-site/views-data.js"></script>
 <script>
 const route = () => {
-  const [, arg] = location.hash.replace(/^#/, "").split("/");
+  const [name, arg] = location.hash.replace(/^#/, "").split("/");
+  if (name === "detail") {   // #detail/<CODE> exercises the Client 360 platform panel
+    const p = (FIXTURE.client_profile || []).find((r) => r.dsp_short_code === arg) || {};
+    $("#view").innerHTML = `<div class="page-head"><h1>${esc(p.dsp_name || arg)} <span class="muted">${esc(arg)}</span></h1></div>
+      <div id="cd-platform"><p class="muted">Loading platform data…</p></div>`;
+    loadPlatformPanel({ short_code: arg, dsp_name: p.dsp_name || arg });
+    return;
+  }
   Views.renderData($("#view"), arg).catch((e) => {
     $("#view").innerHTML = "<pre style='color:red'>" + esc(e.stack) + "</pre>";
   });

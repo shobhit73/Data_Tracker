@@ -30,16 +30,21 @@ CRM_ENV = (
     r"\memory\_secrets\rohit-crm.env"
 )
 
-# source table -> columns NOT copied (the CRM table generates its own id).
-TABLES = {
-    "api_activity_runs": ["id"],
-    "payroll_health": [],
-    "client_data_coverage": [],
-    # source_message_id is the Gmail message the row was parsed from — an
-    # internal bookkeeping id that means nothing inside the CRM.
-    "document_transfer": ["id", "source_message_id"],
-    "client_document_counts": [],
-}
+# (source table, CRM table, columns NOT copied). The id columns are dropped
+# because each CRM table generates its own; source_message_id is the Gmail
+# message a transfer row was parsed from — internal bookkeeping that means
+# nothing inside the CRM. client_overview lands as client_profile: 'overview'
+# is the dashboard view's name, 'profile' is what it is to the Client 360 page.
+TABLES = [
+    ("api_activity_runs", "api_activity_runs", ["id"]),
+    ("payroll_health", "payroll_health", []),
+    ("client_data_coverage", "client_data_coverage", []),
+    ("document_transfer", "document_transfer", ["id", "source_message_id"]),
+    ("client_document_counts", "client_document_counts", []),
+    ("client_overview", "client_profile", []),
+    ("client_system_activity", "client_system_activity", []),
+    ("client_work_locations", "client_work_locations", ["id"]),
+]
 BATCH = 200
 
 
@@ -94,15 +99,15 @@ def main():
     cur = connect().cursor()
     conf = None if dry else crm_conf()
 
-    for table, drop_cols in TABLES.items():
-        rows = fetch_source(cur, table, drop_cols)
+    for source, dest, drop_cols in TABLES:
+        rows = fetch_source(cur, source, drop_cols)
         if dry:
-            print("PLAN  %-24s %4d rows" % (table, len(rows)))
+            print("PLAN  %-24s %4d rows" % (dest, len(rows)))
             continue
-        rest(conf, "DELETE", "%s?id=gt.0" % table)
+        rest(conf, "DELETE", "%s?id=gt.0" % dest)
         for i in range(0, len(rows), BATCH):
-            rest(conf, "POST", table, rows[i:i + BATCH])
-        print("PUSHED %-24s %4d rows" % (table, len(rows)))
+            rest(conf, "POST", dest, rows[i:i + BATCH])
+        print("PUSHED %-24s %4d rows" % (dest, len(rows)))
 
     print("done (%s)" % ("dry run, nothing written" if dry else "CRM refreshed"))
 

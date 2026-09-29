@@ -52,6 +52,20 @@ Data view — per-client progress with expandable still-to-collect lists, plus
 On hold / Out of scope sections. Verified in the harness against the sheet dump
 (test_crm_push.js: ALL PASS, 281 status rows).
 
+## Phase 4 — Client 360 platform panel (built 29 Sep 2026)
+
+The dashboard's client-detail facts render at the bottom of the CRM's client
+page: Platform profile (FEIN, state, pay frequency, benefits), System go-live
+(what prod shows), Employee data coverage, Historical progress, Payroll health,
+Documents (db counts + transfer record matched by name), Onboarding-API chips,
+Work locations. Three more tables (`2026-09-29-phase4-client-detail.sql`):
+`client_profile` (from our `client_overview`), `client_system_activity`,
+`client_work_locations` — refreshed by the same `push_data_views.py`. The panel
+is fire-and-forget (`#cd-platform` + `loadPlatformPanel` in views-data.js;
+`Store.getPlatformBundle` warns instead of failing), so the core client page
+never breaks on missing data. Join key = the CRM client's `short_code`; the
+API section joins via the profile's FEIN, the transfer record by name match.
+
 ## Standing notes
 
 - These five tables are **read-only reporting copies**. The sources stay on

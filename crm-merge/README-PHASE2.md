@@ -1,8 +1,11 @@
 # Phase 2 — the dashboard's data views inside the CRM
 
-Everything here is built and locally verified (all four tabs rendered against
-real data in `preview/test_data_views.html`); deployment is three steps with
-two owners.
+**Status: SHIPPED 29 Sep 2026.** SQL run in the CRM's SQL editor (Shobhit),
+589 rows pushed and verified, UI deployed via CRM commit `92be45e` (Shobhit's
+github account has collaborator access), Data nav item live on
+crm-teal-chi-45.vercel.app, old dashboard views frozen with banners.
+`push_data_views.py` remains the refresh bridge — run it whenever the source
+tables are refreshed.
 
 ## What ships
 

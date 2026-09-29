@@ -182,6 +182,9 @@ window.Store = (() => {
   const listDataCoverage     = () => listReport("client_data_coverage", "company_name");
   const listDocumentTransfers = () => listReport("document_transfer", "client_name");
   const listDocumentCounts   = () => listReport("client_document_counts", "company_name");
+  const listHistClients      = () => listReport("hist_clients", "dsp_name");
+  const listHistStatus       = () => listReport("hist_status", "dsp_short_code");
+  const listHistOutOfScope   = () => listReport("hist_out_of_scope", "dsp_name");
 
   async function getActivity(clientId) {
     const { data, error } = await sb.from("activity_log")
@@ -198,5 +201,6 @@ window.Store = (() => {
            updateClient, updateModule, createTask, updateTask, addNote, addClientNote,
            listOpenTasks, listDoneTasks, getTeams, listLastActivity, getActivity,
            listApiActivity, listPayrollHealth, listDataCoverage,
-           listDocumentTransfers, listDocumentCounts };
+           listDocumentTransfers, listDocumentCounts,
+           listHistClients, listHistStatus, listHistOutOfScope };
 })();

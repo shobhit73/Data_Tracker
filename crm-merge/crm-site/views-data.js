@@ -9,6 +9,7 @@ const DATA_TABS = [
   ["health", "Payroll Health"],
   ["coverage", "Data Coverage"],
   ["docs", "Documents"],
+  ["hist", "Historical"],
 ];
 
 /* Onboarding-API modules in the order they are actually run, not alphabetical. */
@@ -49,7 +50,7 @@ Views.renderData = async (view, tab) => {
   let renderBody = () => {}; // becomes real once the tab's data has arrived
   $("#data-q").oninput = (e) => { dataQ = e.target.value.trim().toLowerCase(); renderBody(); };
 
-  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab };
+  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab };
   renderBody = await renderers[tab]();
   renderBody();
 };
@@ -201,5 +202,61 @@ async function docsTab() {
       `<tr><td colspan="3" class="muted">No clients match.</td></tr>`}</tbody></table></div>`;
     $("#data-count").textContent = `${t.length} transfers · ${c.length} clients counted`;
   };
+  return render;
+}
+
+/* --- Historical: the DSP Historical Data Tracker sheet, mirrored here after
+   every daily 17:30 IST run. The sheet is the source of truth — fix statuses
+   there, never here. N/A is excluded from the ratio (expected = received +
+   pending), same arithmetic as the daily mail. --- */
+async function histTab() {
+  const [clients, status, oos] = await Promise.all([
+    Store.listHistClients(), Store.listHistStatus(), Store.listHistOutOfScope()]);
+  const pendingBy = {};
+  status.forEach((s) => {
+    if (s.status !== "Pending") return;
+    (pendingBy[s.dsp_short_code] = pendingBy[s.dsp_short_code] || []).push(s);
+  });
+  const hold = oos.filter((o) => (o.reason || "").toLowerCase().includes("hold"));
+  const gone = oos.filter((o) => !(o.reason || "").toLowerCase().includes("hold"));
+  const pct = (c) => { const exp = c.received + c.pending; return exp ? Math.round(c.received / exp * 100) : 0; };
+
+  let show = "all";
+  $("#data-extra").innerHTML = `<select id="h-filter">
+    <option value="all">All clients</option>
+    <option value="open">Still collecting</option>
+    <option value="done">Complete</option></select>`;
+
+  const oosBlock = (title, rows) => rows.length ? `<h2>${title}</h2>` +
+    rows.map((o) => `<div class="act-row"><b>${esc(o.dsp_name || o.dsp_short_code)}</b>
+      <span class="tag">${esc(o.reason || "")}</span>
+      ${o.notes ? `<div class="muted" style="font-size:12px">${esc(o.notes)}</div>` : ""}</div>`).join("") : "";
+
+  const render = () => {
+    const list = clients.filter((c) =>
+      (!dataQ || (c.dsp_name + " " + c.dsp_short_code).toLowerCase().includes(dataQ)) &&
+      (show === "all" || (show === "done" ? c.pending === 0 : c.pending > 0)))
+      .sort((a, b) => pct(b) - pct(a) || a.dsp_name.localeCompare(b.dsp_name));
+    $("#data-body").innerHTML = list.map((c) => {
+      const pend = pendingBy[c.dsp_short_code] || [];
+      const p = pct(c);
+      return `<details class="cgroup"><summary>
+        <b>${esc(c.dsp_name)}</b><span class="tag">${esc(c.vendor || "?")}</span>
+        <span class="muted" style="font-size:12px">${esc(c.implementor || "")}</span>
+        <span style="flex:1"></span>
+        <span class="bar"><span style="width:${p}%"></span></span> <b>${p}%</b>
+        <span class="muted" style="font-size:12px">${c.received} of ${c.received + c.pending} received${c.not_applicable ? ` · ${c.not_applicable} n/a` : ""} · scanned ${c.last_scanned ? esc(String(c.last_scanned).slice(0, 10)) : "—"}</span>
+        </summary>${pend.length ? `
+        <table class="grid"><thead><tr><th>Category</th><th>Report still to collect</th><th>Unit</th></tr></thead>
+        <tbody>${pend.map((s) => `<tr><td>${esc(s.category || "")}</td><td>${esc(s.report_name || "")}</td><td>${esc(s.unit_label || "")}</td></tr>`).join("")}</tbody></table>` :
+        `<p class="muted" style="padding:0 14px 12px">Nothing left to collect.</p>`}
+      </details>`;
+    }).join("") || `<p class="muted">No clients match.</p>`;
+    $("#data-body").innerHTML += oosBlock("On hold (auto-resumes with the RAG)", hold) +
+      oosBlock("Out of scope — do not chase", gone);
+    $("#data-count").textContent = `${list.length} of ${clients.length} tracked · ` +
+      `${clients.filter((c) => c.pending > 0).length} still collecting`;
+  };
+  $("#h-filter").onchange = (e) => { show = e.target.value; render(); };
   return render;
 }

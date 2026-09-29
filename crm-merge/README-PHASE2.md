@@ -38,6 +38,20 @@ One new nav item **Data** (admin + implementor), four tabs:
 4. After the CRM shows the data: freeze the four views on the old dashboard
    with the same "moved to CRM" banner Open Items got.
 
+## Phase 3 — Historical (built 29 Sep 2026, deploy pending)
+
+The Google Sheet stays the source of truth and the 17:30 IST mail is untouched.
+`apps-script/Code.gs` gained a CRM PUSH section: after every daily run (and via
+the manual `pushToCrmOnly` entry point) it rewrites three CRM tables whole —
+`hist_clients` (per-client counts, N/A excluded from the ratio), `hist_status`
+(every status cell, long-format), `hist_out_of_scope`. Config = two Apps Script
+**Script properties** (`CRM_URL`, `CRM_SERVICE_KEY`); until they exist the push
+logs a skip and the mail is unaffected. A push failure is caught after the send.
+SQL: `2026-09-29-phase3-historical.sql`. UI: fifth tab **Historical** in the
+Data view — per-client progress with expandable still-to-collect lists, plus
+On hold / Out of scope sections. Verified in the harness against the sheet dump
+(test_crm_push.js: ALL PASS, 281 status rows).
+
 ## Standing notes
 
 - These five tables are **read-only reporting copies**. The sources stay on

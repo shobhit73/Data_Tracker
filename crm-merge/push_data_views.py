@@ -35,7 +35,9 @@ TABLES = {
     "api_activity_runs": ["id"],
     "payroll_health": [],
     "client_data_coverage": [],
-    "document_transfer": ["id"],
+    # source_message_id is the Gmail message the row was parsed from — an
+    # internal bookkeeping id that means nothing inside the CRM.
+    "document_transfer": ["id", "source_message_id"],
     "client_document_counts": [],
 }
 BATCH = 200

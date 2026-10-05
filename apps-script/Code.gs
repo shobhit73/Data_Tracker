@@ -104,7 +104,10 @@ function loadAll() {
       folder_url: String(r[4] || '').trim() || null,
       // Per-client rather than per-report: one scan covers a whole client, so
       // a single 'Last Scanned' is the honest granularity.
-      last_scanned: r[5] ? formatSheetDate_(r[5]) : null
+      last_scanned: r[5] ? formatSheetDate_(r[5]) : null,
+      // missing | empty | unmatched (N) | ok, written by the scan. Blank on a
+      // client the scan has not reached yet, which is its own answer.
+      folder_state: String(r[6] || '').trim()
     });
   });
 
@@ -251,9 +254,16 @@ function sheetApplyHits(hits) {
 }
 
 /** Stamp when a client was last scanned, so the mail can show freshness. */
-function sheetSetLastScanned(codes) {
+function sheetSetLastScanned(codes, states) {
   if (!codes.length) return;
   var sh = tab_(TAB_CLIENTS);
+
+  // Column G carries what the scan found in Drive. Without it the mail has
+  // only a count, and it read 0 as "no folder" - telling people to create a
+  // folder that was already there, and saying the same thing when files WERE
+  // present but none of their names matched a tracked report.
+  if (sh.getLastColumn() < 7) sh.getRange(1, 7).setValue('Folder State');
+
   var range = sh.getDataRange();
   var values = range.getValues();
   var today = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd');
@@ -261,7 +271,11 @@ function sheetSetLastScanned(codes) {
   codes.forEach(function (c) { want[c] = true; });
   var dirty = false;
   for (var r = 1; r < values.length; r++) {
-    if (want[String(values[r][0] || '').trim()]) { values[r][5] = today; dirty = true; }
+    var code = String(values[r][0] || '').trim();
+    if (!want[code]) continue;
+    values[r][5] = today;
+    if (states && states[code]) values[r][6] = states[code];
+    dirty = true;
   }
   if (dirty) range.setValues(values);
 }
@@ -358,6 +372,175 @@ function sheetSetFolderUrl(code, folderId) {
       return;
     }
   }
+}
+
+
+/* ----------------------------------------------------------------------
+ * Keeping the Catalog in step with the calendar
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The units a rolling report is expected to have TODAY.
+ *
+ * Port of expected_units() in scripts/seed_historical_reports.py; keep the two
+ * in step. Recomputed rather than stored, because the rule moves on its own:
+ *   year    - current year and the three before it
+ *   quarter - prior year Q1-Q4, plus this year's quarters up to the one running
+ *
+ * The quarter in progress counts. A partial pull is still expected, and a
+ * client migrating mid-quarter cannot wait for it to close.
+ */
+function expectedUnits_(kind, today) {
+  today = today || new Date();
+  var y = today.getFullYear();
+  var out = [];
+  var i;
+  if (kind === 'year') {
+    for (i = y - 3; i <= y; i++) out.push(String(i));
+    return out;
+  }
+  if (kind === 'quarter') {
+    for (i = 1; i <= 4; i++) out.push((y - 1) + ' Q' + i);
+    var thisQ = Math.floor(today.getMonth() / 3) + 1;
+    for (i = 1; i <= thisQ; i++) out.push(y + ' Q' + i);
+    return out;
+  }
+  return ['Report'];
+}
+
+/**
+ * What kind of unit a report uses, read off the units it already has rather
+ * than a list kept here. The Catalog is then the only place a report's shape
+ * is declared, and a new rolling report needs no code change.
+ */
+function unitKind_(units) {
+  var year = 0, quarter = 0;
+  units.forEach(function (u) {
+    if (/^\d{4}$/.test(u)) year++;
+    else if (/^\d{4} Q[1-4]$/.test(u)) quarter++;
+  });
+  if (quarter && quarter >= year) return 'quarter';
+  if (year) return 'year';
+  return 'single';
+}
+
+/**
+ * Add any Catalog row and status column the calendar now calls for.
+ *
+ * Both lists were written out by hand, and the rule they came from keeps
+ * moving: 'Audit Trail 2026 Q4' became due on 1 Oct 2026 and was simply absent,
+ * so the quarter went untracked with no error anywhere - loadAll skips a column
+ * with no Catalog entry, and a Catalog entry with no column is never read. The
+ * same was waiting for Payroll History on 1 Jan.
+ *
+ * Only ever adds. A unit that falls out of the rule - Payroll History 2023 once
+ * 2027 begins - keeps its column, because that column holds collected history
+ * and hand-written N/A decisions that a human put there. Dropping out of the
+ * expected set is not a reason to destroy the record of it.
+ */
+function ensureCurrentUnits_(dryRun) {
+  var log = [];
+  var sh = tab_(TAB_CATALOG);
+  var values = sh.getDataRange().getValues();
+  if (values.length < 2) return log;
+
+  // Group the Catalog by report, remembering where each group ends so a new
+  // unit lands beside its siblings instead of at the bottom of the tab.
+  var groups = {}, order = [];
+  for (var r = 1; r < values.length; r++) {
+    var vendor = String(values[r][0] || '').trim();
+    var report = String(values[r][2] || '').trim();
+    if (!vendor || !report) continue;
+    var key = vendor + '|' + report;
+    if (!groups[key]) {
+      groups[key] = { vendor: vendor, category: String(values[r][1] || '').trim(),
+                      report: report, units: [], lastRow: r + 1 };
+      order.push(key);
+    }
+    groups[key].units.push(String(values[r][3] || '').trim());
+    groups[key].lastRow = r + 1;          // 1-based sheet row
+  }
+
+  // Work out every insertion first, then apply bottom-up so the row numbers
+  // collected here stay valid as the sheet grows.
+  var jobs = [];
+  order.forEach(function (key) {
+    var g = groups[key];
+    var kind = unitKind_(g.units);
+    if (kind === 'single') return;
+    var have = {};
+    g.units.forEach(function (u) { have[u] = true; });
+    var missing = expectedUnits_(kind).filter(function (u) { return !have[u]; });
+    if (missing.length) jobs.push({ g: g, missing: missing });
+  });
+  if (!jobs.length) return log;
+
+  jobs.sort(function (a, b) { return b.g.lastRow - a.g.lastRow; });
+
+  var newHeaders = {};   // vendor -> [{ report, header }]
+  jobs.forEach(function (job) {
+    var g = job.g;
+    // Reverse, because each one is inserted at the same position: the last
+    // inserted ends up first, so reversing leaves them in calendar order.
+    if (!dryRun) {
+      job.missing.slice().reverse().forEach(function (unit) {
+        var header = g.report + ' ' + unit;
+        sh.insertRowAfter(g.lastRow);
+        sh.getRange(g.lastRow + 1, 1, 1, 5)
+          .setValues([[g.vendor, g.category, g.report, unit, header]]);
+      });
+    }
+    job.missing.forEach(function (unit) {
+      (newHeaders[g.vendor] = newHeaders[g.vendor] || [])
+        .push({ report: g.report, header: g.report + ' ' + unit });
+    });
+    log.push('Catalog: ' + (dryRun ? 'would add' : 'added') + ' ' + g.vendor +
+             ' ' + g.report + ' ' + job.missing.join(', ') +
+             ' (after row ' + g.lastRow + ')');
+  });
+
+  Object.keys(newHeaders).forEach(function (vendor) {
+    var tabName = STATUS_TABS[vendor];
+    if (!tabName) return;
+    var st = ss_().getSheetByName(tabName);
+    if (!st) { log.push('Status tab "' + tabName + '" not found - column not added'); return; }
+
+    newHeaders[vendor].forEach(function (item) {
+      var heads = st.getRange(1, 1, 1, st.getLastColumn()).getValues()[0];
+      var at = 0, exists = false;
+      for (var c = 0; c < heads.length; c++) {
+        var h = String(heads[c] || '').trim();
+        if (h === item.header) { exists = true; break; }
+        // Rightmost column already belonging to this report - the new unit
+        // belongs immediately after it, not at the end of the tab.
+        if (h.indexOf(item.report + ' ') === 0) at = c + 1;
+      }
+      if (exists) return;
+      if (!at) at = st.getLastColumn();
+      if (!dryRun) {
+        st.insertColumnAfter(at);
+        st.getRange(1, at + 1).setValue(item.header);
+      }
+      log.push(tabName + ': ' + (dryRun ? 'would add' : 'added') +
+               ' column "' + item.header + '" after column ' + at);
+    });
+  });
+
+  return log;
+}
+
+/**
+ * What ensureCurrentUnits_ would add, without touching the sheet.
+ *
+ * Run this from the editor before trusting the daily trigger with it: it
+ * inserts rows and columns into a live tracker, and the cheapest way to be
+ * sure it lands in the right place is to read what it intends to do first.
+ */
+function previewCurrentUnits() {
+  var log = ensureCurrentUnits_(true);
+  if (!log.length) log = ['Catalog and status tabs are already up to date — nothing to add.'];
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
 }
 
 
@@ -616,6 +799,9 @@ function runScan(data) {
   // the end. Per-cell writes would spend the 6-minute budget on Sheet calls.
   var hits = [];
   var scanned = [];
+  // What Drive actually looked like, per client, so the mail can tell the
+  // three zero-report cases apart instead of guessing from the count.
+  var folderState = {};
 
   codes.forEach(function (code) {
     var scope = scopeByCode[code];
@@ -645,6 +831,7 @@ function runScan(data) {
     }
     if (!histFolder) {
       log.push(code + ': no "' + HISTORICAL_FOLDER + '" folder - nothing marked');
+      folderState[code] = 'missing';
       scanned.push(code);
       return;
     }
@@ -716,6 +903,13 @@ function runScan(data) {
              HISTORICAL_FOLDER + ', ' + Object.keys(claimed).length +
              ' report(s) matched, ' + unmatched.length + ' matched nothing');
 
+    // 'unmatched' is the one worth a person's eye: the files are sitting in
+    // the right folder and the pull is NOT the thing that is missing - the
+    // names are. Reported as its own state so the mail stops calling it an
+    // empty folder.
+    folderState[code] = !walked.files.length ? 'empty'
+      : (!Object.keys(claimed).length ? 'unmatched (' + walked.files.length + ')' : 'ok');
+
     // Every line here sits inside Historical Data, so each one is either a
     // report named in a way the rules miss or a stray that does not belong.
     // Both are worth a person's eye; a count alone is unactionable.
@@ -733,7 +927,7 @@ function runScan(data) {
   var applied = { fresh: 0, held: 0, relinked: 0, heldDetail: [] };
   try {
     applied = sheetApplyHits(hits);
-    sheetSetLastScanned(scanned);
+    sheetSetLastScanned(scanned, folderState);
   } catch (e) {
     log.push('WRITE FAILED: ' + e.message + ' - the sheet was not updated');
     return log;
@@ -1484,6 +1678,7 @@ function summarise(data) {
         implementor: ov.implementor || 'Unassigned',
         vendor: sc.vendor || 'vendor not set',
         folderUrl: sc.folder_url || null,
+        folderState: sc.folder_state || '',
         pending: 0, received: 0, na: 0, total: 0,
         checked: null,
         cats: {}
@@ -1760,8 +1955,7 @@ function clientRow(c, first) {
 
   if (c.received === 0) {
     p.push('<div style="font:12px/1.6 ' + FONT + ';color:' + C_AMBER +
-           ';padding-top:9px;">No Historical Data folder in Drive yet &mdash; ' +
-           'create it and start the pull.</div>');
+           ';padding-top:9px;">' + esc(nothingYetLine(c)) + '</div>');
   } else {
     p.push('<div style="font:12px/1.6 ' + FONT + ';color:' + C_SOFT +
            ';padding-top:9px;">' + esc(outstandingLine(c)) + '</div>');
@@ -1769,6 +1963,35 @@ function clientRow(c, first) {
 
   p.push('</td></tr></table>');
   return p.join('');
+}
+
+/**
+ * What to say about a client with nothing received yet.
+ *
+ * This used to be one sentence - "No Historical Data folder in Drive yet,
+ * create it" - printed whenever the count was zero. The count does not know
+ * about folders, so it was wrong for every client whose folder existed and was
+ * simply empty, and actively misleading for one whose folder held files that
+ * no rule matched: it sent people off to create a folder that was already
+ * there, with the real problem (the file names) never mentioned.
+ *
+ * The scan already knew the difference. It just had nowhere to say it.
+ */
+function nothingYetLine(c) {
+  var st = String(c.folderState || '');
+  if (st === 'missing') {
+    return 'No Historical Data folder in Drive yet — create it and start the pull.';
+  }
+  if (st === 'empty') {
+    return 'Historical Data folder is there but empty — the pull has not started.';
+  }
+  if (st.indexOf('unmatched') === 0) {
+    var n = (st.match(/\((\d+)\)/) || [, '?'])[1];
+    return n + ' file(s) sit in Historical Data but none match a tracked report ' +
+           '— check the file names rather than re-pulling.';
+  }
+  // Blank: the scan has not reached this client yet (added today, or it errored).
+  return 'Nothing received yet — not scanned so far, so Drive has not been checked.';
 }
 
 function buildSubject(s) {
@@ -1983,7 +2206,7 @@ function buildText(s, snap) {
                  (c.received === 0 ? '  NOT STARTED' : '  ' + c.pending + ' left') +
                  (c.na ? '  (' + c.na + ' n/a)' : ''));
       lines.push('      ' + (c.received === 0
-        ? 'No Historical Data folder in Drive yet.'
+        ? nothingYetLine(c)
         : outstandingLine(c)));
     });
   });
@@ -2131,6 +2354,18 @@ function pushToCrmOnly() { pushToCrm(null); }
 /** Scan Drive, then send the mail. Called by the daily trigger. */
 function runDaily() {
   var started = new Date();
+
+  // Before anything reads the sheet: add the Catalog rows and status columns
+  // the calendar now calls for. A missing column is invisible rather than
+  // noisy - loadAll skips it - so this has to run on its own schedule, not
+  // wait for someone to notice a quarter stopped being counted. Its failure
+  // must not cost the mail; the worst case is the sheet staying as it was.
+  try {
+    ensureCurrentUnits_().forEach(function (l) { console.log(l); });
+  } catch (e) {
+    console.log('UNIT SYNC FAILED: ' + e.message + ' - continuing with the sheet as it is');
+  }
+
   var data = loadAll();
 
   // Discovery first: Drive decides who is in scope, not the sheet. A client

@@ -543,6 +543,22 @@ function previewCurrentUnits() {
   return log.join('\n');
 }
 
+/**
+ * Apply what previewCurrentUnits just listed, without waiting for the trigger.
+ *
+ * runDaily already calls ensureCurrentUnits_ on every run, so this exists only
+ * to close a gap sooner than 17:30 — and because a trailing-underscore name is
+ * hidden from the editor's Run menu, so the private one cannot be picked there.
+ * Safe to run at any time: it adds only what is missing and a second run is a
+ * no-op.
+ */
+function applyCurrentUnits() {
+  var log = ensureCurrentUnits_(false);
+  if (!log.length) log = ['Catalog and status tabs were already up to date — nothing added.'];
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
 
 /* ======================================================================
  * SCAN

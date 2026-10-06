@@ -2735,6 +2735,349 @@ function applyHistoricalSync() {
 
 
 /* ======================================================================
+ * SHRUTI'S TRACKER -> client_overview  (was Step 2 of the 12:30 routine)
+ *
+ * Port of scripts/populate_overview_from_shruti.py. The Python version got
+ * there through a Drive CSV export and decode_dsp_sheet.py; reading the live
+ * Sheet removes both of those, and with them the stalest part of the chain.
+ *
+ * Reading the Sheet instead of a CSV changes one thing that matters: a date
+ * cell arrives as a Date object, not as '09/15/2026'. ovDate_ takes both.
+ *
+ * READ ONLY against the tracker. Nothing here writes back to Shruti's sheet.
+ * ====================================================================== */
+
+// field -> header text in the 'DSP Implementation' tab. Matched through norm(),
+// so spacing and punctuation drift is tolerated. A RENAME is not, and that is
+// deliberate - see syncOverviewFromTracker_.
+var OVERVIEW_HEADERS = {
+  dsp_name: 'DSP Name',
+  dsp_short_code: 'DSP Short Code',
+  expected_tt_live_date: 'Expected Time Tracking Live Date',
+  actual_tt_live_date: 'Actual Time Tracking Live Date',
+  payroll_cutoff_date: 'Payroll Cut off Date',
+  payroll_live_date: 'Payroll Live(Pay) Date',
+  rag_status: 'RAG',
+  final_status: 'Final Status',
+  frequency: 'Frequency',
+  previous_system: 'Previous System',
+  implementor: 'Implementor',
+  state: 'State',
+  data_transfer_paycom: 'Data Transfer (Paycom)',
+  data_transfer_adp: 'Data Transfer (ADP)',
+  high_level_requirements: 'High Level Requirement Details',
+  benefits_details: 'Benefits Details',
+  benefits_deductions_via:
+    'Benefits > Employees Deductions/Contributions through Manually/API'
+};
+
+// The columns of client_overview this step owns. Everything else on the row -
+// `fein` above all, which refresh_prod.py fills and which carries a UNIQUE
+// constraint - belongs to another job and is never sent.
+var OVERVIEW_FIELDS = [
+  'dsp_name', 'vendor', 'expected_tt_live_date', 'actual_tt_live_date',
+  'payroll_cutoff_date', 'payroll_live_date', 'rag_status', 'final_status',
+  'frequency', 'previous_system', 'implementor', 'state',
+  'benefits_requirement', 'benefits_details', 'benefits_deductions_via',
+  'source_row_notes'
+];
+
+// client_overview.rag_status has a CHECK for exactly these three. Everything
+// else the RAG dropdown holds - On Hold, Cancelled, Unresponsive, Waiting on
+// ... - is a pause, not a RAG, and must land as null rather than fail the row.
+var OVERVIEW_RAG = { red: 'Red', amber: 'Amber', green: 'Green' };
+
+// The 'High Level Requirement Details' cell is a small block:
+//     Benefits: Decisely
+//     401K: HI
+//     Everify: Yes
+// Horizontal whitespace only in the pattern. A plain \s* would swallow the
+// newline and capture the 401K line as the benefits answer.
+var OVERVIEW_BENEFITS_LINE = /benefits?[^\S\n]*[:\-][^\S\n]*([^\n]*)/i;
+
+function ovText_(v) {
+  var s = String(v === null || v === undefined ? '' : v).trim();
+  return s || null;
+}
+
+function ovRag_(v) {
+  return OVERVIEW_RAG[String(v === null || v === undefined ? '' : v)
+    .trim().toLowerCase()] || null;
+}
+
+/** A Date cell or an m/d/y string -> 'yyyy-MM-dd'. Anything else -> null. */
+function ovDate_(v, tz) {
+  if (v instanceof Date) {
+    return isNaN(v.getTime()) ? null : Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  }
+  var s = String(v === null || v === undefined ? '' : v).trim();
+  if (!s) return null;
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s);
+  // Free text typed into a date cell leaves it null rather than guessing. The
+  // caller reports those, so a mistyped cell is visible instead of silent.
+  if (!m) return null;
+  var mo = Number(m[1]), da = Number(m[2]), yr = Number(m[3]);
+  if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+  // Two-digit years are read as 20xx. Every date in this tab is a project
+  // milestone from 2025 onwards, so the 1900s window strptime would use has
+  // no case here.
+  if (yr < 100) yr += 2000;
+  return yr + '-' + ('0' + mo).slice(-2) + '-' + ('0' + da).slice(-2);
+}
+
+/**
+ * What the sheet records for Benefits, verbatim.
+ *
+ * Deliberately NOT reduced to yes/no: the values are things like 'Decisely',
+ * 'Innovative BPS', 'TBD', 'Not using our platform'. Which platform a client
+ * goes with IS the answer, so a boolean would throw away the useful part.
+ */
+function ovBenefits_(cell) {
+  var m = OVERVIEW_BENEFITS_LINE.exec(
+    String(cell === null || cell === undefined ? '' : cell));
+  return m ? (m[1].trim() || null) : null;
+}
+
+/**
+ * Company name only.
+ *
+ * Some DSP Name cells carry contact details typed in below the company name -
+ * Goro Logistical holds a name, two emails and a phone. Keep the first line;
+ * the rest goes to source_row_notes so nothing from the sheet is lost quietly.
+ */
+function ovCleanName_(v) {
+  var lines = String(v === null || v === undefined ? '' : v).trim().split(/\r?\n/);
+  return { name: lines[0].trim(), extra: lines.slice(1).join(' | ').trim() };
+}
+
+/** Both Data Transfer columns filled is ambiguous, so it answers null. */
+function ovVendor_(paycom, adp) {
+  var p = ovText_(paycom), a = ovText_(adp);
+  if (p && a) return null;
+  if (p) return 'Paycom';
+  if (a) return 'ADP';
+  return null;
+}
+
+/**
+ * Decide what to write: parsed tracker rows + what client_overview holds now
+ * -> the rows to send, and what changed in each.
+ *
+ * Separate from syncOverviewFromTracker_ so it can be run against real data
+ * without a Sheet or a network call. It is the part worth testing: a mistake
+ * here does not fail, it quietly erases hand-typed values.
+ */
+function ovMergeRows_(recs, existing) {
+  var send = [], inserts = [], updates = [], same = 0;
+
+  recs.forEach(function (rec) {
+    var cur = existing[rec.dsp_short_code] || null;
+    var out = { dsp_short_code: rec.dsp_short_code };
+    var diff = [];
+
+    OVERVIEW_FIELDS.forEach(function (f) {
+      var have = cur && cur[f] !== undefined && cur[f] !== null ? cur[f] : null;
+      // coalesce, not a blind overwrite. The sheet wins wherever it actually
+      // has a value, but a blank cell must not wipe something filled in by
+      // hand in Supabase. Most DSPs have no vendor in the sheet, so a plain
+      // overwrite would blank every manually corrected one on every run.
+      var want = rec[f] !== null && rec[f] !== undefined ? rec[f] : have;
+      out[f] = want;
+      if (String(want === null ? '' : want) !== String(have === null ? '' : have)) {
+        diff.push(f);
+      }
+    });
+
+    if (!cur) {
+      inserts.push(rec.dsp_short_code);
+    } else if (diff.length) {
+      updates.push(rec.dsp_short_code + ': ' + diff.join(', '));
+    } else {
+      same++;
+      return;   // nothing to say about this row, so do not write it
+    }
+    // Only on rows that really changed. The Python version stamped every row
+    // on every run, which left updated_at meaning "the job ran" rather than
+    // "this client changed".
+    out.updated_at = new Date().toISOString();
+    send.push(out);
+  });
+
+  return { send: send, inserts: inserts, updates: updates, same: same };
+}
+
+/**
+ * Mirror the tracker into client_overview. Returns a log; writes only when
+ * dryRun is false.
+ */
+function syncOverviewFromTracker_(dryRun) {
+  var log = [];
+  var conf = sbConf_('DASH');
+  if (!conf) {
+    log.push('Overview sync skipped: DASH_URL / DASH_SERVICE_KEY not set.');
+    return log;
+  }
+
+  var ss = SpreadsheetApp.openById(ONBOARDING_TRACKER_ID);
+  var sh = ss.getSheetByName(ONBOARDING_TAB);
+  if (!sh) {
+    throw new Error('Tab "' + ONBOARDING_TAB + '" not found in the onboarding tracker');
+  }
+  var tz = ss.getSpreadsheetTimeZone();
+  var values = sh.getDataRange().getValues();
+  if (values.length < 2) {
+    log.push('Onboarding tracker has no data rows - nothing to sync.');
+    return log;
+  }
+
+  // First match wins, exactly as in readOnboardingTracker_: the tab carries a
+  // SECOND 'RAG' column far to the right (a weekly grid) and Shruti's status
+  // lives in the first one.
+  var idx = {};
+  values[0].forEach(function (h, i) {
+    var n = norm(h);
+    if (n && !idx.hasOwnProperty(n)) idx[n] = i;
+  });
+
+  var col = {}, missing = [];
+  Object.keys(OVERVIEW_HEADERS).forEach(function (f) {
+    var n = norm(OVERVIEW_HEADERS[f]);
+    if (idx.hasOwnProperty(n)) col[f] = idx[n];
+    else missing.push(f + " ('" + OVERVIEW_HEADERS[f] + "')");
+  });
+  // Stopping is the feature. Shruti's team inserts columns into this tab -
+  // 'SmartHealth+/HealthCues/Ensura' landed before 'Check Printing' in Sep
+  // 2026 - and pinned indices then read the neighbouring column: vendor came
+  // out inverted and benefits_details held dates. A loud stop beats shifted
+  // data written over good rows.
+  if (missing.length) {
+    throw new Error('Onboarding tracker headers not found, refusing to write ' +
+                    'shifted data: ' + missing.join(', '));
+  }
+
+  var recs = [], seen = {}, blank = 0, dupe = 0;
+  var noVendor = [], badDates = [], nameExtras = 0;
+
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    var cell = function (f) { return row[col[f]]; };
+
+    var nm = ovCleanName_(cell('dsp_name'));
+    var code = ovText_(cell('dsp_short_code'));
+    // A row with no short code never reaches client_overview. That is the
+    // sheet's own rule, not ours - it is also why such a client can still
+    // appear on Rohit's audit roster and look like a gap here.
+    if (!nm.name || !code) { blank++; continue; }
+    if (seen.hasOwnProperty(code)) { dupe++; continue; }
+    seen[code] = true;
+
+    var vendor = ovVendor_(cell('data_transfer_paycom'), cell('data_transfer_adp'));
+    if (!vendor) noVendor.push(code);
+    if (nm.extra) nameExtras++;
+
+    var notes = [];
+    if (!vendor) notes.push('vendor undetermined from Data Transfer (Paycom)/(ADP) columns');
+    if (nm.extra) notes.push('extra text in DSP Name cell: ' + nm.extra);
+
+    var rec = {
+      dsp_short_code: code,
+      dsp_name: nm.name,
+      vendor: vendor,
+      expected_tt_live_date: ovDate_(cell('expected_tt_live_date'), tz),
+      actual_tt_live_date: ovDate_(cell('actual_tt_live_date'), tz),
+      payroll_cutoff_date: ovDate_(cell('payroll_cutoff_date'), tz),
+      payroll_live_date: ovDate_(cell('payroll_live_date'), tz),
+      rag_status: ovRag_(cell('rag_status')),
+      final_status: ovText_(cell('final_status')),
+      frequency: ovText_(cell('frequency')),
+      previous_system: ovText_(cell('previous_system')),
+      implementor: ovText_(cell('implementor')),
+      state: ovText_(cell('state')),
+      benefits_requirement: ovBenefits_(cell('high_level_requirements')),
+      benefits_details: ovText_(cell('benefits_details')),
+      benefits_deductions_via: ovText_(cell('benefits_deductions_via')),
+      source_row_notes: notes.length ? notes.join('; ') : null
+    };
+
+    ['expected_tt_live_date', 'payroll_cutoff_date'].forEach(function (f) {
+      if (ovText_(cell(f)) !== null && rec[f] === null) {
+        badDates.push(code + ' / ' + f + ': ' + String(cell(f)).slice(0, 40));
+      }
+    });
+
+    recs.push(rec);
+  }
+
+  log.push('Tracker: ' + recs.length + ' DSPs (' + blank + ' blank rows, ' +
+           dupe + ' duplicate short codes skipped)');
+  if (!recs.length) return log;
+
+  var existing = {};
+  sbSelectAll_(conf, 'client_overview').forEach(function (e) {
+    existing[e.dsp_short_code] = e;
+  });
+
+  var plan = ovMergeRows_(recs, existing);
+  var send = plan.send;
+
+  log.push('  unchanged ' + plan.same + ' | new ' + plan.inserts.length +
+           ' | changed ' + plan.updates.length);
+  plan.inserts.slice(0, 20).forEach(function (c) { log.push('  + ' + c); });
+  if (plan.inserts.length > 20) {
+    log.push('  + ... and ' + (plan.inserts.length - 20) + ' more');
+  }
+  plan.updates.slice(0, 25).forEach(function (u) { log.push('  ~ ' + u); });
+  if (plan.updates.length > 25) {
+    log.push('  ~ ... and ' + (plan.updates.length - 25) + ' more');
+  }
+
+  if (noVendor.length) {
+    log.push('  vendor undetermined for ' + noVendor.length + ': ' +
+             noVendor.slice(0, 20).join(', ') + (noVendor.length > 20 ? ' ...' : ''));
+  }
+  if (nameExtras) {
+    log.push('  ' + nameExtras + ' DSP Name cell(s) carried extra text, kept in source_row_notes');
+  }
+  if (badDates.length) {
+    log.push('  unparsed date values (' + badDates.length + '):');
+    badDates.slice(0, 15).forEach(function (b) { log.push('    ' + b); });
+  }
+
+  if (!send.length) {
+    log.push('Nothing to write - client_overview already matches the tracker.');
+    return log;
+  }
+  if (dryRun) {
+    log.push('DRY RUN - ' + send.length + ' row(s) would be written, nothing sent.');
+    return log;
+  }
+
+  // merge-duplicates so only the columns sent are touched; fein and anything
+  // else another job owns stays as it is.
+  for (var i = 0; i < send.length; i += 200) {
+    sbFetch_(conf, 'post', 'client_overview?on_conflict=dsp_short_code',
+             send.slice(i, i + 200), 'resolution=merge-duplicates');
+  }
+  log.push('Wrote ' + send.length + ' row(s) to client_overview.');
+  return log;
+}
+
+/** Dry run: what the overview sync would change, writing nothing. */
+function previewOverviewSync() {
+  var log = syncOverviewFromTracker_(true);
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+/** Apply it. Read previewOverviewSync first. */
+function applyOverviewSync() {
+  var log = syncOverviewFromTracker_(false);
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+
+/* ======================================================================
  * MAIN
  * ====================================================================== */
 
@@ -2834,6 +3177,16 @@ function runDaily() {
   // Supabase - one being unreachable says nothing about the others.
   try { pushToCrm(data); }
   catch (e) { console.log('CRM PUSH FAILED: ' + e.message); }
+
+  // Step 2: Shruti's tracker -> client_overview. Independent of everything
+  // above - it reads the onboarding tracker, not our sheet - but it has to
+  // land before the data-view push below, which is what carries
+  // client_overview to the CRM as client_profile.
+  try {
+    syncOverviewFromTracker_(false).forEach(function (l) { console.log(l); });
+  } catch (e) {
+    console.log('OVERVIEW SYNC FAILED: ' + e.message);
+  }
 
   // Step 2b, which used to be sync_historical_from_sheet.py in the 12:30
   // routine. Running it here rather than there is a real improvement, not just

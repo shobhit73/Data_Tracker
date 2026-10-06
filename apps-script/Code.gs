@@ -2268,14 +2268,23 @@ function buildText(s, snap) {
  * Until both exist every push logs a skip and does nothing.
  */
 
-function crmConf_() {
+/**
+ * A Supabase project's URL + key from script properties, by prefix.
+ *
+ * Two projects are in play: CRM_* is Rohit's CRM (written to) and DASH_* is our
+ * own dashboard (read from). Same REST shape, so one pair of helpers serves
+ * both and the prefix is the only thing that differs.
+ */
+function sbConf_(prefix) {
   var p = PropertiesService.getScriptProperties();
-  var url = String(p.getProperty('CRM_URL') || '').trim().replace(/\/+$/, '');
-  var key = String(p.getProperty('CRM_SERVICE_KEY') || '').trim();
+  var url = String(p.getProperty(prefix + '_URL') || '').trim().replace(/\/+$/, '');
+  var key = String(p.getProperty(prefix + '_SERVICE_KEY') || '').trim();
   return url && key ? { url: url, key: key } : null;
 }
 
-function crmFetch_(conf, method, path, body) {
+function crmConf_() { return sbConf_('CRM'); }
+
+function sbFetch_(conf, method, path, body) {
   var res = UrlFetchApp.fetch(conf.url + '/rest/v1/' + path, {
     method: method,
     contentType: 'application/json',
@@ -2288,6 +2297,39 @@ function crmFetch_(conf, method, path, body) {
   if (code >= 300) {
     throw new Error(method + ' ' + path.split('?')[0] + ' -> HTTP ' + code +
                     ': ' + String(res.getContentText()).slice(0, 300));
+  }
+  return res;
+}
+
+function crmFetch_(conf, method, path, body) { return sbFetch_(conf, method, path, body); }
+
+/**
+ * Every row of a table, paged.
+ *
+ * PostgREST caps a response at its configured limit (1000 by default) and says
+ * nothing about it, so a table that quietly grows past the cap would start
+ * copying across short. Paging until a short page arrives removes the cap as
+ * something anyone has to remember.
+ */
+function sbSelectAll_(conf, table, pageSize) {
+  pageSize = pageSize || 1000;
+  var out = [], from = 0;
+  for (;;) {
+    var res = UrlFetchApp.fetch(
+      conf.url + '/rest/v1/' + table + '?select=*',
+      { method: 'get',
+        headers: { apikey: conf.key, Authorization: 'Bearer ' + conf.key,
+                   Range: from + '-' + (from + pageSize - 1) },
+        muteHttpExceptions: true });
+    var code = res.getResponseCode();
+    if (code >= 300) {
+      throw new Error('GET ' + table + ' -> HTTP ' + code + ': ' +
+                      String(res.getContentText()).slice(0, 300));
+    }
+    var batch = JSON.parse(res.getContentText());
+    out = out.concat(batch);
+    if (batch.length < pageSize) return out;
+    from += pageSize;
   }
 }
 
@@ -2350,6 +2392,96 @@ function pushToCrm(data) {
 
 /** Run by hand: push the sheet's current state to the CRM, nothing else. */
 function pushToCrmOnly() { pushToCrm(null); }
+
+
+/* ----------------------------------------------------------------------
+ * Data views: our Supabase -> the CRM
+ * ---------------------------------------------------------------------- */
+
+/**
+ * (source table in our Supabase, destination table in the CRM, columns to drop).
+ *
+ * Mirrors crm-merge/push_data_views.py, which this replaces; keep the two in
+ * step until that script is retired. The id columns go because each CRM table
+ * generates its own, and source_message_id is the Gmail message a transfer row
+ * was parsed from — internal bookkeeping that means nothing inside the CRM.
+ * client_overview lands as client_profile: 'overview' is our view's name,
+ * 'profile' is what it is to the Client 360 page.
+ */
+var CRM_DATA_VIEWS = [
+  ['api_activity_runs', 'api_activity_runs', ['id']],
+  ['payroll_health', 'payroll_health', []],
+  ['client_data_coverage', 'client_data_coverage', []],
+  ['document_transfer', 'document_transfer', ['id', 'source_message_id']],
+  ['client_document_counts', 'client_document_counts', []],
+  ['client_overview', 'client_profile', []],
+  ['client_system_activity', 'client_system_activity', []],
+  ['client_work_locations', 'client_work_locations', ['id']]
+];
+
+/**
+ * Copy the dashboard's reporting tables into the CRM (was Step 4c of the
+ * dsp-ops-refresh routine).
+ *
+ * Moved here so the CRM stops depending on someone remembering to run a script.
+ * Our Supabase was refreshed daily and the CRM's copy of it was not, so the CRM
+ * could sit days behind its own Historical tab — which Apps Script had been
+ * updating on time all along.
+ *
+ * A full replace per table is right here and nowhere else in this file: these
+ * are read-only reporting copies, nothing in the CRM writes to them, and there
+ * is no per-row history on that side to lose. (The historical tables are a
+ * different matter — they carry file names and human notes, which is why they
+ * are not handled this way.)
+ *
+ * Setup (once): Project Settings > Script properties > add
+ *   DASH_URL          https://<our dashboard project>.supabase.co
+ *   DASH_SERVICE_KEY  our project's key — the read-only anon key is enough,
+ *                     and is the safer thing to put here
+ */
+function pushDataViewsToCrm() {
+  var src = sbConf_('DASH'), dst = crmConf_();
+  var log = [];
+  if (!src) {
+    log.push('Data-view push skipped: DASH_URL / DASH_SERVICE_KEY not set.');
+    return log;
+  }
+  if (!dst) {
+    log.push('Data-view push skipped: CRM_URL / CRM_SERVICE_KEY not set.');
+    return log;
+  }
+
+  CRM_DATA_VIEWS.forEach(function (t) {
+    var from = t[0], to = t[1], drop = t[2];
+    var rows = sbSelectAll_(src, from);
+
+    // Read first, write second. A table that fails to read must not leave the
+    // CRM's copy of it deleted and empty.
+    if (drop.length) {
+      rows = rows.map(function (r) {
+        var o = {};
+        Object.keys(r).forEach(function (k) {
+          if (drop.indexOf(k) === -1) o[k] = r[k];
+        });
+        return o;
+      });
+    }
+
+    sbFetch_(dst, 'delete', to + '?id=gt.0');
+    for (var i = 0; i < rows.length; i += 200) {
+      sbFetch_(dst, 'post', to, rows.slice(i, i + 200));
+    }
+    log.push('CRM data view: ' + to + ' = ' + rows.length + ' rows');
+  });
+  return log;
+}
+
+/** Run by hand: push only the data views, nothing else. */
+function pushDataViewsOnly() {
+  var log = pushDataViewsToCrm();
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
 
 
 /* ======================================================================
@@ -2442,9 +2574,15 @@ function runDaily() {
   console.log('SENT "' + subject + '" to ' + MAIL_TO.length + ' recipients in ' +
               secs + 's');
 
-  // Last, so a CRM hiccup can never cost the mail or the snapshot.
+  // Last, so a CRM hiccup can never cost the mail or the snapshot. The two
+  // pushes are caught separately: the tracker copy comes from the sheet we just
+  // read, the data views from our Supabase, and one being unreachable says
+  // nothing about the other.
   try { pushToCrm(data); }
   catch (e) { console.log('CRM PUSH FAILED: ' + e.message); }
+
+  try { pushDataViewsToCrm().forEach(function (l) { console.log(l); }); }
+  catch (e) { console.log('CRM DATA-VIEW PUSH FAILED: ' + e.message); }
 }
 
 /** Build and log the mail without sending. Use this to eyeball changes. */

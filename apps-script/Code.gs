@@ -2436,8 +2436,14 @@ var CRM_DATA_VIEWS = [
  *
  * Setup (once): Project Settings > Script properties > add
  *   DASH_URL          https://<our dashboard project>.supabase.co
- *   DASH_SERVICE_KEY  our project's key — the read-only anon key is enough,
- *                     and is the safer thing to put here
+ *   DASH_SERVICE_KEY  our project's sb_secret_... key. The anon key would do
+ *                     for this function alone, which only reads, but the same
+ *                     property feeds syncHistoricalToDashboard_, which writes.
+ *
+ * A 403 with code 42501 here is a missing GRANT, not a wrong key: our tables
+ * were made through raw psycopg2, so service_role never got the privileges
+ * Supabase grants its own. scripts/grant_service_role.py is the fix and the
+ * record of it.
  */
 function pushDataViewsToCrm() {
   var src = sbConf_('DASH'), dst = crmConf_();

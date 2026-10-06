@@ -2744,7 +2744,11 @@ function applyHistoricalSync() {
  *   installTrigger()  run ONCE by hand: schedules runDaily at 17:30 IST
  *   previewOnly()     run by hand: builds the mail, logs it, sends nothing
  *   scanOnly()        run by hand: scans Drive, writes results, no mail
- *   runDaily()        what the trigger calls: scan, then mail
+ *   runDaily()        what the trigger calls: units, discover, scan, mail,
+ *                     then the three downstream pushes
+ *
+ * The mail is the point and everything after it is caught, so a downstream
+ * failure costs that leg for a day and nothing else.
  *
  * Nothing here depends on Claude Code or on any laptop being switched on.
  */
@@ -2824,13 +2828,30 @@ function runDaily() {
   console.log('SENT "' + subject + '" to ' + MAIL_TO.length + ' recipients in ' +
               secs + 's');
 
-  // Last, so a CRM hiccup can never cost the mail or the snapshot. The two
-  // pushes are caught separately: the tracker copy comes from the sheet we just
-  // read, the data views from our Supabase, and one being unreachable says
-  // nothing about the other.
+  // Last, so a downstream hiccup can never cost the mail or the snapshot. The
+  // three are caught separately: the tracker copy comes from the sheet we just
+  // read, the dashboard sync from that same sheet, the data views from our
+  // Supabase - one being unreachable says nothing about the others.
   try { pushToCrm(data); }
   catch (e) { console.log('CRM PUSH FAILED: ' + e.message); }
 
+  // Step 2b, which used to be sync_historical_from_sheet.py in the 12:30
+  // routine. Running it here rather than there is a real improvement, not just
+  // a move: at 12:30 it mirrored YESTERDAY's scan, because the scan that writes
+  // the sheet is the one a few lines above this. Now Supabase gets today's.
+  //
+  // Direction stays strictly sheet -> Supabase, and downgrades are legal: the
+  // sheet is the truth and can take a row back. Nothing here writes the sheet,
+  // so a failure leaves the sheet and the mail untouched and the next run
+  // simply replays it - the sync is idempotent.
+  try {
+    syncHistoricalToDashboard_(false).forEach(function (l) { console.log(l); });
+  } catch (e) {
+    console.log('DASHBOARD HISTORICAL SYNC FAILED: ' + e.message);
+  }
+
+  // Keep this last: it copies whatever is in our Supabase at this moment, so
+  // anything written after it would not reach the CRM until tomorrow.
   try { pushDataViewsToCrm().forEach(function (l) { console.log(l); }); }
   catch (e) { console.log('CRM DATA-VIEW PUSH FAILED: ' + e.message); }
 }

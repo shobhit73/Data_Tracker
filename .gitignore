@@ -28,3 +28,9 @@ data/55th-3rd-employee-id-changes.csv
 # the output is not. Regenerate locally with scripts/add_stave_zero_doc_employees.py.
 data/stave_zero_doc_employees.csv
 crm-merge/preview/fixture.js
+
+# Supabase secret keys sometimes land here as bare FILENAMES (the key IS the
+# name). This repo is public, so one "git add -A" would publish the key itself.
+sb_secret_*
+sb_publishable_*
+*.env

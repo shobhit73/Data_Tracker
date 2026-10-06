@@ -2284,12 +2284,12 @@ function sbConf_(prefix) {
 
 function crmConf_() { return sbConf_('CRM'); }
 
-function sbFetch_(conf, method, path, body) {
+function sbFetch_(conf, method, path, body, prefer) {
   var res = UrlFetchApp.fetch(conf.url + '/rest/v1/' + path, {
     method: method,
     contentType: 'application/json',
     headers: { apikey: conf.key, Authorization: 'Bearer ' + conf.key,
-               Prefer: 'return=minimal' },
+               Prefer: 'return=minimal' + (prefer ? ',' + prefer : '') },
     payload: body === undefined ? undefined : JSON.stringify(body),
     muteHttpExceptions: true
   });
@@ -2479,6 +2479,250 @@ function pushDataViewsToCrm() {
 /** Run by hand: push only the data views, nothing else. */
 function pushDataViewsOnly() {
   var log = pushDataViewsToCrm();
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+
+/* ----------------------------------------------------------------------
+ * The tracker sheet -> our own Supabase
+ * ---------------------------------------------------------------------- */
+
+/** (code|report|unit) -> reason, from the Not Applicable Log tab. */
+function naReasons_() {
+  var sh = ss_().getSheetByName(TAB_NA_LOG);
+  var out = {};
+  if (!sh) return out;
+  rows_(sh).forEach(function (r) {
+    var code = String(r[0] || '').trim();
+    var report = String(r[2] || '').trim();
+    var unit = String(r[3] || '').trim();
+    var reason = String(r[4] || '').trim();
+    if (code && report && reason) out[code + '|' + report + '|' + unit] = reason;
+  });
+  return out;
+}
+
+/**
+ * Mirror the sheet into our Supabase (was Step 2b of the dsp-ops-refresh
+ * routine, scripts/sync_historical_from_sheet.py).
+ *
+ * Direction is strictly sheet -> Supabase; nothing here writes to the sheet.
+ * Apps Script is the thing that fills the sheet in the first place, so it
+ * already holds every row in memory — the routine's download-the-xlsx, note-the
+ * -path, parse-six-tabs dance disappears entirely.
+ *
+ * WHAT IT MUST NOT CLOBBER — this is why it is an upsert and not a replace.
+ * historical_report_status carries three things the sheet does not have:
+ * file_name and folder_url, written by the scan and used by the dashboard to
+ * link each report to the file in Drive, and notes, typed by a human. Only
+ * status and checked_date are sent, so the rest survives untouched. The one
+ * exception is an N/A row with no reason yet, which gets one from the Not
+ * Applicable Log tab.
+ *
+ * A downgrade (Received -> Pending) is legal. The sheet is the truth, and
+ * unlike the old monotonic Drive scan it can take a row back. Every downgrade
+ * is listed individually so it can be read before it is applied.
+ *
+ * PURGE RULE. A client the sheet moved to Out of Scope has its rows deleted,
+ * otherwise the dashboard keeps chasing a client the sheet already stopped
+ * tracking. That is only safe while nothing was ever collected for it: if any
+ * row has a file name, a note, or a status other than Pending, the client is
+ * left alone and reported for a human instead. Spelman at 46/46 carries 46 file
+ * names and Drive links that exist nowhere else; CDC at 0/21 carries nothing.
+ * Deleting is right for one and destroys the record for the other.
+ */
+function syncHistoricalToDashboard_(dryRun) {
+  var log = [];
+  var conf = sbConf_('DASH');
+  if (!conf) {
+    log.push('Historical sync skipped: DASH_URL / DASH_SERVICE_KEY not set.');
+    return log;
+  }
+
+  var data = loadAll();
+  var reasons = naReasons_();
+
+  var catById = {};
+  data.catalog.forEach(function (c) { catById[c.id] = c; });
+
+  // Our Supabase keys a report by (vendor, report_name) with the unit carried
+  // separately; the sheet's Catalog is one row per (report, unit). Map across.
+  var ridOf = {};
+  sbSelectAll_(conf, 'historical_report_catalog').forEach(function (c) {
+    ridOf[c.vendor + '|' + c.report_name] = c.id;
+  });
+
+  var scopeNow = {};
+  sbSelectAll_(conf, 'historical_scope').forEach(function (s) {
+    scopeNow[s.dsp_short_code] = true;
+  });
+  var excludedNow = {};
+  sbSelectAll_(conf, 'historical_scope_excluded').forEach(function (x) {
+    excludedNow[x.dsp_short_code] = true;
+  });
+  var statusNow = {};
+  sbSelectAll_(conf, 'historical_report_status').forEach(function (r) {
+    statusNow[r.dsp_short_code + '|' + r.report_id + '|' + r.unit_label] = r;
+  });
+
+  var sheetCodes = {}, scopeByCode = {};
+  data.scope.forEach(function (s) {
+    sheetCodes[s.dsp_short_code] = true;
+    scopeByCode[s.dsp_short_code] = s;
+  });
+  var excludedCodes = {};
+  data.excluded.forEach(function (x) { excludedCodes[x.dsp_short_code] = true; });
+
+  log.push('sheet: ' + Object.keys(sheetCodes).length + ' clients, ' +
+           data.status.length + ' status cells, ' + Object.keys(reasons).length +
+           ' N/A reasons, ' + data.excluded.length + ' out of scope');
+
+  // ---- what to write
+  var newScope = [], newExcluded = [], inserts = [], upgrades = [],
+      downgrades = [], naNotes = [], dateBumps = [], unknownReport = {};
+
+  Object.keys(sheetCodes).forEach(function (c) { if (!scopeNow[c]) newScope.push(c); });
+  Object.keys(excludedCodes).forEach(function (c) { if (!excludedNow[c]) newExcluded.push(c); });
+
+  data.status.forEach(function (s) {
+    var cat = catById[s.report_id];
+    if (!cat) return;
+    var rid = ridOf[cat.vendor + '|' + cat.report_name];
+    if (rid === undefined) { unknownReport[cat.vendor + ' / ' + cat.report_name] = true; return; }
+
+    var key = s.dsp_short_code + '|' + rid + '|' + s.unit_label;
+    var reason = reasons[s.dsp_short_code + '|' + cat.report_name + '|' + s.unit_label] || '';
+    var row = { dsp_short_code: s.dsp_short_code, report_id: rid,
+                unit_label: s.unit_label, status: s.status };
+    var seen = (scopeByCode[s.dsp_short_code] || {}).last_scanned || null;
+
+    var cur = statusNow[key];
+    if (!cur) {
+      if (seen) row.checked_date = seen;
+      if (reason) row.notes = reason;
+      inserts.push(row);
+      return;
+    }
+    var changed = false;
+    if (cur.status !== s.status) {
+      (s.status === 'Pending' && (cur.status === 'Received' || cur.status === 'Not applicable')
+        ? downgrades : upgrades).push(s.dsp_short_code + ' ' + cat.report_name + ' ' +
+          s.unit_label + ': ' + cur.status + ' -> ' + s.status);
+      changed = true;
+    }
+    // An N/A row with no reason yet is the only case where notes are written.
+    if (s.status === 'Not applicable' && !String(cur.notes || '').trim() && reason) {
+      row.notes = reason;
+      naNotes.push(s.dsp_short_code + ' ' + cat.report_name + ' ' + s.unit_label);
+      changed = true;
+    }
+    if (seen && (!cur.checked_date || String(cur.checked_date) < seen)) {
+      row.checked_date = seen;
+      dateBumps.push(key);
+      changed = true;
+    }
+    if (changed) inserts.push(row);
+  });
+
+  // ---- who leaves, and who may not
+  var purge = [], purgeBlocked = [];
+  Object.keys(excludedCodes).forEach(function (code) {
+    if (!scopeNow[code]) return;                 // not tracked there anyway
+    var collected = false;
+    Object.keys(statusNow).forEach(function (k) {
+      var r = statusNow[k];
+      if (r.dsp_short_code !== code || collected) return;
+      if (String(r.file_name || '').trim() || String(r.notes || '').trim() ||
+          r.status !== 'Pending') collected = true;
+    });
+    (collected ? purgeBlocked : purge).push(code);
+  });
+
+  Object.keys(unknownReport).forEach(function (k) {
+    log.push('  !! no catalog row in Supabase for ' + k);
+  });
+  log.push('planned changes' + (dryRun ? ' (dry run, nothing written)' : ''));
+  log.push('  historical_scope       + ' + newScope.length + '  ' + newScope.join(', '));
+  log.push('  historical_scope_excl  + ' + newExcluded.length + '  ' + newExcluded.join(', '));
+  log.push('  status rows written      ' + inserts.length);
+  log.push('  status upgrades          ' + upgrades.length);
+  log.push('  status DOWNGRADES        ' + downgrades.length);
+  downgrades.forEach(function (d) { log.push('      ' + d); });
+  log.push('  N/A reasons filled in    ' + naNotes.length);
+  log.push('  checked_date bumped      ' + dateBumps.length);
+  log.push('  moved to Out of Scope  - ' + purge.length + '  ' + purge.join(', '));
+  purgeBlocked.forEach(function (c) {
+    log.push('    !! ' + c + ' is Out of Scope in the sheet but has collected rows ' +
+             'in Supabase - left alone, needs a human');
+  });
+
+  if (dryRun) return log;
+
+  // ---- write
+  if (newScope.length) {
+    // entered_on is NOT NULL and vendor is both NOT NULL and constrained to
+    // ADP/Paycom, so a client the sheet has not scanned yet (Last Scanned
+    // blank) or whose Vendor cell is empty would fail the whole batch rather
+    // than just itself. Today stands in for the missing date — the row is
+    // entering scope now — and a client with no vendor is reported, not sent.
+    var today = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd');
+    var scopeRows = [];
+    newScope.forEach(function (c) {
+      var s = scopeByCode[c] || {};
+      if (s.vendor !== 'ADP' && s.vendor !== 'Paycom') {
+        log.push('  !! ' + c + ' has no ADP/Paycom vendor on the Clients tab - ' +
+                 'not added to historical_scope');
+        return;
+      }
+      scopeRows.push({ dsp_short_code: c, vendor: s.vendor,
+                       entered_on: s.last_scanned || today,
+                       folder_url: s.folder_url || null });
+    });
+    if (scopeRows.length) sbFetch_(conf, 'post', 'historical_scope', scopeRows);
+    scopeRows.forEach(function (r) { scopeNow[r.dsp_short_code] = true; });
+  }
+  if (newExcluded.length) {
+    sbFetch_(conf, 'post', 'historical_scope_excluded', data.excluded
+      .filter(function (x) { return newExcluded.indexOf(x.dsp_short_code) !== -1; })
+      .map(function (x) {
+        return { dsp_short_code: x.dsp_short_code, reason: x.notes || x.reason || 'Out of scope' };
+      }));
+  }
+  // status.dsp_short_code is a foreign key into historical_scope, so a client
+  // that just failed the vendor guard would take the whole batch down with it
+  // rather than only itself. Drop its rows and say so.
+  var sendable = inserts.filter(function (r) { return scopeNow[r.dsp_short_code]; });
+  if (sendable.length !== inserts.length) {
+    log.push('  !! ' + (inserts.length - sendable.length) + ' status row(s) skipped ' +
+             '- their client is not in historical_scope');
+  }
+
+  // merge-duplicates so only the columns sent are touched; file_name,
+  // folder_url and any existing notes are left exactly as they were.
+  for (var i = 0; i < sendable.length; i += 200) {
+    sbFetch_(conf, 'post',
+      'historical_report_status?on_conflict=dsp_short_code,report_id,unit_label',
+      sendable.slice(i, i + 200), 'resolution=merge-duplicates');
+  }
+  purge.forEach(function (code) {
+    sbFetch_(conf, 'delete', 'historical_report_status?dsp_short_code=eq.' + encodeURIComponent(code));
+    sbFetch_(conf, 'delete', 'historical_scope?dsp_short_code=eq.' + encodeURIComponent(code));
+  });
+  log.push('written.');
+  return log;
+}
+
+/** Dry run: what the sync would change, writing nothing. */
+function previewHistoricalSync() {
+  var log = syncHistoricalToDashboard_(true);
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+/** Apply it. Read previewHistoricalSync first — downgrades are listed there. */
+function applyHistoricalSync() {
+  var log = syncHistoricalToDashboard_(false);
   log.forEach(function (l) { console.log(l); });
   return log.join('\n');
 }

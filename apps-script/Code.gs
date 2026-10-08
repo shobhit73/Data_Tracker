@@ -2805,25 +2805,75 @@ function ovRag_(v) {
     .trim().toLowerCase()] || null;
 }
 
-/** A Date cell or an m/d/y string -> 'yyyy-MM-dd'. Anything else -> null. */
-function ovDate_(v, tz) {
-  if (v instanceof Date) {
-    return isNaN(v.getTime()) ? null : Utilities.formatDate(v, tz, 'yyyy-MM-dd');
-  }
-  var s = String(v === null || v === undefined ? '' : v).trim();
-  if (!s) return null;
-  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s);
-  // Free text typed into a date cell leaves it null rather than guessing. The
-  // caller reports those, so a mistyped cell is visible instead of silent.
-  if (!m) return null;
-  var mo = Number(m[1]), da = Number(m[2]), yr = Number(m[3]);
+/** 'm/d/y' -> 'yyyy-MM-dd', or null if the numbers are not a date. */
+function ovOneDate_(mo, da, yr) {
+  mo = Number(mo); da = Number(da); yr = Number(yr);
   if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
-  // Two-digit years are read as 20xx. Every date in this tab is a project
-  // milestone from 2025 onwards, so the 1900s window strptime would use has
-  // no case here.
+  // Two-digit years read as 20xx. Every date in this tab is a project
+  // milestone from 2025 onwards, so strptime's 1900s window has no case here.
   if (yr < 100) yr += 2000;
   return yr + '-' + ('0' + mo).slice(-2) + '-' + ('0' + da).slice(-2);
 }
+
+/**
+ * A date cell -> 'yyyy-MM-dd', plus what had to be done to get it.
+ *
+ * Returns { value, tokens, backwards }.
+ *
+ * THE REVISION CHAINS
+ *   21 cells in this tab hold a history rather than a date:
+ *       "07/05/2026 >> 07/19/2026"
+ *       "4/5/2026 > > 04/12/2026  >> 04/26/2026 >> 06/05/2026"
+ *   populate_overview_from_shruti.py called these "notes typed into the wrong
+ *   cell" and left them null, so 21 clients have had no expected go-live date
+ *   on the dashboard for as long as it has existed. They are not notes. They
+ *   are the date, rewritten each time it moved.
+ *
+ *   The LAST date wins, not the latest one. Checked against all 21 before
+ *   choosing: 18 are in ascending order so the two rules agree, but ATNY
+ *   (7/7 >> 6/21) and EPSI (09/08 >> 09/06) genuinely moved EARLIER, and
+ *   taking the maximum would quietly report a date the sheet no longer
+ *   claims. Last written is what the person meant.
+ *
+ *   `backwards` flags a chain that does not end on its own latest date, so
+ *   those three stay visible. One of them, LDLO's "...>>08/06/2025", is a
+ *   plain typo for 2026 -- this reports it rather than correcting it, because
+ *   guessing which digit is wrong is the sheet owner's call, not ours.
+ */
+function ovDateScan_(v, tz) {
+  var none = { value: null, tokens: 0, backwards: false };
+
+  // toString rather than `instanceof Date`: instanceof compares against one
+  // realm's constructor and answers false for a Date made in another. Apps
+  // Script hands these over from the Sheets service, so this is not worth
+  // being clever about.
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime())
+      ? none
+      : { value: Utilities.formatDate(v, tz, 'yyyy-MM-dd'), tokens: 1, backwards: false };
+  }
+  var s = String(v === null || v === undefined ? '' : v).trim();
+  if (!s) return none;
+
+  var one = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s);
+  if (one) return { value: ovOneDate_(one[1], one[2], one[3]), tokens: 1, backwards: false };
+
+  var found = [], m;
+  var all = /(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})/g;
+  while ((m = all.exec(s)) !== null) {
+    var d = ovOneDate_(m[1], m[2], m[3]);
+    if (d) found.push(d);
+  }
+  // Genuine free text still lands as null rather than a guess.
+  if (!found.length) return none;
+
+  var last = found[found.length - 1];
+  var max = found.slice().sort()[found.length - 1];   // ISO dates sort as text
+  return { value: last, tokens: found.length, backwards: last !== max };
+}
+
+/** Just the date. Most callers want only this. */
+function ovDate_(v, tz) { return ovDateScan_(v, tz).value; }
 
 /**
  * What the sheet records for Benefits, verbatim.
@@ -2956,7 +3006,7 @@ function syncOverviewFromTracker_(dryRun) {
   }
 
   var recs = [], seen = {}, blank = 0, dupe = 0;
-  var noVendor = [], badDates = [], nameExtras = 0;
+  var noVendor = [], badDates = [], revised = [], backwards = [], nameExtras = 0;
 
   for (var r = 1; r < values.length; r++) {
     var row = values[r];
@@ -2979,14 +3029,34 @@ function syncOverviewFromTracker_(dryRun) {
     if (!vendor) notes.push('vendor undetermined from Data Transfer (Paycom)/(ADP) columns');
     if (nm.extra) notes.push('extra text in DSP Name cell: ' + nm.extra);
 
+    // Reads the cell, records how it had to be read, returns the date. The
+    // recording is the point: a recovered revision chain and a cell nobody
+    // can parse look identical in the data and must not look identical in
+    // the log.
+    var dateOf = function (f) {
+      var raw = cell(f);
+      var s = ovDateScan_(raw, tz);
+      var txt = String(raw === null || raw === undefined ? '' : raw)
+        .replace(/\s+/g, ' ').trim();
+      if (s.tokens > 1) {
+        revised.push(code + ' / ' + f + ' -> ' + s.value + '   from: ' + txt.slice(0, 60));
+        if (s.backwards) {
+          backwards.push(code + ' / ' + f + ' -> ' + s.value + '   from: ' + txt.slice(0, 60));
+        }
+      } else if (s.value === null && txt) {
+        badDates.push(code + ' / ' + f + ': ' + txt.slice(0, 60));
+      }
+      return s.value;
+    };
+
     var rec = {
       dsp_short_code: code,
       dsp_name: nm.name,
       vendor: vendor,
-      expected_tt_live_date: ovDate_(cell('expected_tt_live_date'), tz),
-      actual_tt_live_date: ovDate_(cell('actual_tt_live_date'), tz),
-      payroll_cutoff_date: ovDate_(cell('payroll_cutoff_date'), tz),
-      payroll_live_date: ovDate_(cell('payroll_live_date'), tz),
+      expected_tt_live_date: dateOf('expected_tt_live_date'),
+      actual_tt_live_date: dateOf('actual_tt_live_date'),
+      payroll_cutoff_date: dateOf('payroll_cutoff_date'),
+      payroll_live_date: dateOf('payroll_live_date'),
       rag_status: ovRag_(cell('rag_status')),
       final_status: ovText_(cell('final_status')),
       frequency: ovText_(cell('frequency')),
@@ -2998,12 +3068,6 @@ function syncOverviewFromTracker_(dryRun) {
       benefits_deductions_via: ovText_(cell('benefits_deductions_via')),
       source_row_notes: notes.length ? notes.join('; ') : null
     };
-
-    ['expected_tt_live_date', 'payroll_cutoff_date'].forEach(function (f) {
-      if (ovText_(cell(f)) !== null && rec[f] === null) {
-        badDates.push(code + ' / ' + f + ': ' + String(cell(f)).slice(0, 40));
-      }
-    });
 
     recs.push(rec);
   }
@@ -3038,8 +3102,19 @@ function syncOverviewFromTracker_(dryRun) {
   if (nameExtras) {
     log.push('  ' + nameExtras + ' DSP Name cell(s) carried extra text, kept in source_row_notes');
   }
+  if (revised.length) {
+    log.push('  ' + revised.length + ' date cell(s) held a revision chain, last date taken:');
+    revised.slice(0, 25).forEach(function (r) { log.push('    ' + r); });
+    if (revised.length > 25) log.push('    ... and ' + (revised.length - 25) + ' more');
+  }
+  if (backwards.length) {
+    // Not an error - a date can move earlier. It is flagged because one of
+    // these is a mistyped year, and only the sheet owner can tell which.
+    log.push('  ' + backwards.length + ' chain(s) do NOT end on their own latest date - check the sheet:');
+    backwards.forEach(function (b) { log.push('    ' + b); });
+  }
   if (badDates.length) {
-    log.push('  unparsed date values (' + badDates.length + '):');
+    log.push('  no date found in (' + badDates.length + '):');
     badDates.slice(0, 15).forEach(function (b) { log.push('    ' + b); });
   }
 

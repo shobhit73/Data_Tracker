@@ -31,12 +31,24 @@ makes were first applied by hand in the Supabase SQL editor on 06 Oct 2026.
 """
 from supabase_helper import connect
 
-# Step 2b is the only writer, and these are the only three tables it writes.
-WRITE = [
-    "historical_scope",
-    "historical_report_status",
-    "historical_scope_excluded",
-]
+# Tables Apps Script writes, and the privileges each one actually needs.
+#
+# client_overview was missed when this file was first written, on the day the
+# grants went in: Step 2 had not been ported yet, so only Step 2b's three
+# tables were listed. Step 2 landed two days later and failed on its first
+# real write with the same 42501 as the original incident. Hence the shape of
+# this table -- a new writer means a new row here, and forgetting one fails
+# loudly rather than silently.
+#
+# client_overview gets INSERT and UPDATE but NOT DELETE: the sync only ever
+# upserts, so delete would be a privilege nothing uses and a way to lose the
+# table to one bad call.
+WRITE = {
+    "historical_scope": "insert, update, delete",
+    "historical_report_status": "insert, update, delete",
+    "historical_scope_excluded": "insert, update, delete",
+    "client_overview": "insert, update",
+}
 
 # Human-owned. Deliberately select-only -- see the module docstring.
 NEVER_WRITE = ["open_items", "historical_data_checklist"]
@@ -52,10 +64,10 @@ if __name__ == "__main__":
     cur.execute("grant select on all tables in schema public to service_role")
     print("granted select on all public tables to service_role")
 
-    for t in WRITE:
+    for t, privs in WRITE.items():
         assert t not in NEVER_WRITE, f"{t} is human-owned and must stay read-only"
-        cur.execute(f"grant insert, update, delete on {t} to service_role")
-        print(f"granted insert,update,delete on {t} to service_role")
+        cur.execute(f"grant {privs} on {t} to service_role")
+        print(f"granted {privs} on {t} to service_role")
 
     # So that a table added later is not a repeat of this whole incident.
     cur.execute("alter default privileges in schema public "

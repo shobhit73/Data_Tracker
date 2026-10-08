@@ -111,6 +111,15 @@ Deno.serve(async (req: Request) => {
       },
       dryRun: body.dryRun === true,
     };
+    // Optional, so the NeuronOps jobs still run on a function that has not
+    // been given onboarding credentials. api_activity says so itself rather
+    // than failing here and taking the other jobs down with it.
+    const obUser = Deno.env.get('ONBOARDING_USERNAME');
+    const obPass = Deno.env.get('ONBOARDING_PASSWORD');
+    const obFein = Deno.env.get('ONBOARDING_FEIN');
+    if (obUser && obPass && obFein) {
+      ctx.onboarding = { username: obUser, password: obPass, fein: obFein };
+    }
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }

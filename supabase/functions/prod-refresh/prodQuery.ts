@@ -108,3 +108,87 @@ export async function prodQuery(
 export function sqlList(values: string[]): string {
   return values.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(',');
 }
+
+/* ======================================================================
+ * The ONBOARDING /query endpoint (PHIX-98714)
+ *
+ * A sibling of the above, not the same thing, and copying the NeuronOps
+ * headers here returns `401 Invalid API key` -- which is how an hour went
+ * missing the first time. Three differences, all load-bearing:
+ *
+ *   * path    /app/onboarding/...        not /api/neuronops/...
+ *   * header  AuthorizationHeader: <jwt> raw, no "Bearer ", no X-Auth-Type
+ *   * /token  wants a `fein` as well as username and password. Any valid fein
+ *             for the env works; it does NOT scope or filter the results.
+ *
+ * It also answers HTTP 200 with {"token": null, "error": ...} on bad
+ * credentials, so a 200 is not success -- the token has to be there.
+ *
+ * WHY THIS CANNOT USE THE CALLER'S OWN LOGIN
+ *   The plan was for each CRM user to sign in with their own Uzio credentials,
+ *   so prod's audit would record the actual person (the pattern in the audit
+ *   tool's utils/neuronops_client.py). A browser cannot reach this backend:
+ *
+ *       OPTIONS /api/neuronops/query   -> 200, allows authorization + x-auth-type
+ *       OPTIONS /app/onboarding/query  -> 403
+ *       OPTIONS /app/onboarding/token  -> 403
+ *
+ *   NeuronOps allows the preflight; onboarding refuses it. So this half has to
+ *   run server-side under one account, and who pressed the button is recorded
+ *   on our side (index.ts logs the caller) rather than in prod's audit. The
+ *   upside is that it works for people with no Uzio ops login at all, which is
+ *   what the button was asked to do.
+ *
+ * Tables live in the `prod_onboarding_db` schema, which is the search_path, so
+ * unqualified names work. `deleted` is NULL rather than 0 on every row -- a
+ * `where deleted = 0` silently returns nothing.
+ * ====================================================================== */
+
+async function onboardingToken(
+  username: string, password: string, fein: string,
+): Promise<string> {
+  const res = await fetch(`${GATEWAY}/app/onboarding/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, fein }),
+  });
+  if (!res.ok) throw new Error(`onboarding token call failed: HTTP ${res.status}`);
+  const body = await res.json();
+  // 200 with a null token is how this endpoint says "wrong credentials".
+  if (!body?.token) throw new Error('onboarding token call returned no token');
+  return body.token as string;
+}
+
+export async function onboardingQuery(
+  sql: string,
+  opts: { username: string; password: string; fein: string; size?: number },
+): Promise<QueryResult> {
+  const size = Math.min(opts.size ?? 500, 5000);
+  const token = await onboardingToken(opts.username, opts.password, opts.fein);
+
+  const rows: Record<string, unknown>[] = [];
+  const queryIds: string[] = [];
+  let tookMs = 0;
+
+  for (let page = 0; ; page++) {
+    const res = await fetch(`${GATEWAY}/app/onboarding/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'AuthorizationHeader': token,   // raw, no Bearer -- see the header above
+      },
+      body: JSON.stringify({ sql, page, size }),
+    });
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 300);
+      throw new Error(`onboarding query page ${page} -> HTTP ${res.status}: ${text}`);
+    }
+    const body = await res.json();
+    rows.push(...(body.data ?? []));
+    if (body?._meta?.queryId) queryIds.push(body._meta.queryId);
+    tookMs += body?._meta?.tookMs ?? 0;
+
+    if (!body.hasMore) return { rows, queryIds, tookMs };
+    if (page > 200) throw new Error('onboarding query paged past 200 pages, stopping');
+  }
+}

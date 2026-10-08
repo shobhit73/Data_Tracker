@@ -73,19 +73,58 @@ caller, not a change here.
 
 | Job | Reads | Writes | Port of |
 |---|---|---|---|
-| `work_locations` | `employer_organization` ⋈ `emp_work_location` | `client_work_locations` | `scripts/populate_work_locations.py` |
+| `work_locations` | `employer_organization` ⋈ `emp_work_location` | `client_work_locations` | `populate_work_locations.py` |
+| `api_activity` | `onboarding_automation_history` | `api_activity_runs` | `rebuild_matrix_from_prod.py` + `load_api_activity.py` |
 
-Verified against prod on 06 Oct 2026 before any of this was wired up — the
-query returned 192 rows in 19ms and the job's mapping reproduced the live
-`client_work_locations` table exactly, 0 rows added and 0 removed. One DSP
-(KVLO) has a fein but no work locations in prod; that is reported, not an error.
+**`work_locations`**, verified against prod 06 Oct 2026: 192 rows in 19ms, and
+the mapping reproduced the live table exactly — 0 added, 0 removed. One DSP
+(KVLO) has a fein but no work locations in prod; reported, not an error.
 
-Still to port, all following the same shape: `backfill_fein`,
-`populate_data_coverage`, `populate_load_history`, `populate_document_counts`,
-`populate_system_activity`, and Step 4b's API activity — which goes to a
-*different* backend (`/app/onboarding/query`, header `AuthorizationHeader` with
-no `Bearer` prefix and no `X-Auth-Type`). Sending NeuronOps' headers there
-returns `401 Invalid API key`.
+**`api_activity`**, verified 08 Oct 2026 by running the real job with only
+`fetch` stubbed, over all 1467 prod runs, and diffing against what the Python
+pipeline had put in the table:
+
+```
+rows: job 344  |  table 349
+only in job   : 1   844786770|EmployeeCensus     <- the YEXP fix
+only in table : 6   ...|SocCode                  <- stale, see below
+field diffs on shared rows: 0
+```
+
+It also drops the two TSV files the Python passed between its halves. Those
+existed because the data used to come from a hand-downloaded CSV export; going
+straight from prod to Supabase removes the whole "the file on disk is stale"
+class of problem.
+
+The 6 leftover `SocCode` rows predate this and are harmless: that module was
+deliberately dropped from the display, and `site/index.html` keeps its own
+module list, so they are invisible on the dashboard. Nothing here deletes them.
+
+Still to port, all the same shape: `backfill_fein`, `populate_data_coverage`,
+`populate_load_history`, `populate_document_counts`, `populate_system_activity`.
+
+## Who the prod audit records
+
+Each prod read is audited server-side into `ops_query_read_tracker` under the
+function's own account, not the person who pressed the button.
+
+The intended design was the one in the audit tool's `utils/neuronops_client.py`
+— each user signs in with their own credentials, so their name is what the audit
+records and no shared credential exists anywhere. It does not work here, and the
+reason is worth writing down so nobody re-tries it:
+
+```
+OPTIONS /api/neuronops/query   -> 200, allows authorization + x-auth-type
+OPTIONS /app/onboarding/query  -> 403
+OPTIONS /app/onboarding/token  -> 403
+```
+
+NeuronOps permits a browser preflight; the onboarding backend refuses it. API
+activity lives on the onboarding backend, so that half must run server-side
+under one account. The compensation is that `index.ts` records the caller's
+email on every run — prod's audit says *what* was read, ours says *who* asked —
+and the upside is that the button works for people with no Uzio ops login at
+all, which is what it was asked to do.
 
 ## Deploy
 
@@ -101,9 +140,19 @@ Then the secrets, which are never committed:
 supabase secrets set --project-ref <crm-project-ref> \
   NEURONOPS_USERNAME=... \
   NEURONOPS_PASSWORD=... \
+  ONBOARDING_USERNAME=... \
+  ONBOARDING_PASSWORD=... \
+  ONBOARDING_FEIN=... \
   DASH_URL=https://<our-project-ref>.supabase.co \
   DASH_SERVICE_KEY=sb_secret_...
 ```
+
+The `ONBOARDING_*` three are a separate login for a separate system — the
+values in `_secrets/onboarding-creds.json`, not the NeuronOps ones. Any valid
+fein works for `ONBOARDING_FEIN`; the token endpoint wants one but it does not
+scope or filter results. Leave all three out and the NeuronOps jobs still run —
+`api_activity` then fails on its own and says which secrets are missing,
+without taking the other jobs down.
 
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` are injected by the platform — do not set
 them yourself.

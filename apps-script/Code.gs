@@ -2818,8 +2818,10 @@ function syncAuditCoverage_(dryRun) {
     });
     if (!any) {
       // No folder, or no folder match: nobody looked, so nothing is asserted.
+      // `continue`, not `return` -- this is the for loop's body, not a forEach
+      // callback, and a return here walks out of the whole function.
       noFolder.push(client + (coverage ? ' (' + coverage + ')' : ''));
-      return;
+      continue;
     }
 
     var checked = values[r][col.checked];

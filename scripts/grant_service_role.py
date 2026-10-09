@@ -55,9 +55,11 @@ WRITE = {
     "client_work_locations": "insert, delete",
     "client_document_counts": "insert, update",
     "api_activity_runs": "insert, update",
-    # client_data_coverage, client_load_events and client_system_activity are
-    # deliberately absent: their jobs are not ported yet, and a table nothing
-    # writes should not be writable. Add each one WITH its job.
+    "client_data_coverage": "insert, update",
+    "client_system_activity": "insert, update",
+    # load_history rebuilds each client's slice rather than merging it -- a
+    # stale event row would otherwise survive forever -- so it needs delete.
+    "client_load_events": "insert, delete",
 }
 
 # Human-owned. Deliberately select-only -- see the module docstring.

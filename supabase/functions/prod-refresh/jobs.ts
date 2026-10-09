@@ -607,6 +607,436 @@ async function apiActivity(ctx: JobCtx): Promise<JobResult> {
   return { job: 'api_activity', ok: true, log, queryIds };
 }
 
+/* ---------------------------------------------- data coverage (Step 1) ---- */
+
+/**
+ * Driving licence arrives through the ADP/Paycom census as a custom field, not
+ * as a column on employee: searching the schema finds only the broker tables
+ * and utt_cortex_driver, which has no employee_id and so cannot be tied back.
+ * The census writes four keys; this is the one to count.
+ */
+const LICENCE_KEY = 'License Number';
+
+/**
+ * Port of scripts/populate_data_coverage.py.
+ *
+ * How many of each client's employees actually have a payment method, an
+ * emergency contact, a licence and a worker-comp code -- the things a payroll
+ * cannot run without.
+ *
+ * Two joins look risky and are not: employee_payment_method and
+ * ups_employee_worker_compensation join on employee_code, which is a UUID in
+ * prod and therefore globally unique, so neither can pull in another
+ * employer's rows.
+ *
+ * The licence join carries its own blank check. A custom-field row can exist
+ * with an empty value, so filtering in the WHERE would count every employee
+ * who merely has the key present as having a licence.
+ */
+async function dataCoverage(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+
+  const codeByFein = new Map<string, string>();
+  for (const r of await dashSelect(ctx, 'client_overview',
+                                   'select=dsp_short_code,fein&fein=not.is.null')) {
+    codeByFein.set(String(r.fein), String(r.dsp_short_code));
+  }
+  log.push(`${codeByFein.size} DSPs in client_overview carry a fein`);
+  if (!codeByFein.size) {
+    return { job: 'data_coverage', ok: true, log: [...log, 'nothing to do'], queryIds: [] };
+  }
+  const inlist = sqlList([...codeByFein.keys()]);
+
+  const coverSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, eo.company_name, " +
+    'count(distinct e.id) as total_employees, ' +
+    'count(distinct case when e.date_of_termination is null then e.id end) as active_employees, ' +
+    'count(distinct case when pm.id is not null then e.id end) as total_with_payment, ' +
+    'count(distinct case when ec.id is not null then e.id end) as total_with_emergency, ' +
+    'count(distinct case when cf.id is not null then e.id end) as total_with_licence, ' +
+    'count(distinct case when e.date_of_termination is null and pm.id is not null then e.id end) as active_with_payment, ' +
+    'count(distinct case when e.date_of_termination is null and ec.id is not null then e.id end) as active_with_emergency, ' +
+    'count(distinct case when e.date_of_termination is null and cf.id is not null then e.id end) as active_with_licence, ' +
+    'count(distinct case when wc.id is not null then e.id end) as total_with_worker_comp, ' +
+    'count(distinct case when e.date_of_termination is null and wc.id is not null then e.id end) as active_with_worker_comp ' +
+    'from employer_organization eo ' +
+    'join employee e on e.employer_organization_id = eo.id and e.deleted = 0 ' +
+    'left join employee_payment_method pm on pm.employee_code = e.employee_code and pm.deleted = 0 ' +
+    'left join emergency_contact ec on ec.employee_id = e.id and ec.deleted = 0 ' +
+    'left join employee_custom_fields cf on cf.employee_id = e.id and cf.deleted = 0 ' +
+    `  and cf.field_key = '${LICENCE_KEY}' and nullif(trim(cf.field_value), '') is not null ` +
+    'left join ups_employee_worker_compensation wc on wc.employee_code = e.employee_code and wc.deleted = 0 ' +
+    `where eo.deleted = 0 and replace(coalesce(eo.fein,''),'-','') in (${inlist}) ` +
+    'group by 1, 2 order by 1';
+
+  // Its own query, not another aggregate on the one above: a client can carry
+  // several codes (Travel Management runs GA-4921 and AL-4921), so this is one
+  // row per code, not per employer.
+  const wcSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, " +
+    'wc.worker_comp_code, count(distinct e.id) as employees ' +
+    'from employer_organization eo ' +
+    'join employee e on e.employer_organization_id = eo.id and e.deleted = 0 ' +
+    'join ups_employee_worker_compensation wc on wc.employee_code = e.employee_code and wc.deleted = 0 ' +
+    'where eo.deleted = 0 and e.date_of_termination is null ' +
+    `and replace(coalesce(eo.fein,''),'-','') in (${inlist}) ` +
+    'group by 1, 2 order by 1, 3 desc';
+
+  const cov = await prodQuery(coverSql, { ...ctx.creds, size: 2000 });
+  const wc = await prodQuery(wcSql, { ...ctx.creds, size: 2000 });
+  const queryIds = [...cov.queryIds, ...wc.queryIds];
+  log.push(`prod returned ${cov.rows.length} employer aggregates, ` +
+           `${wc.rows.length} worker-comp code rows`);
+
+  const codesByFein = new Map<string, string[]>();
+  for (const r of wc.rows) {
+    const f = String(r.fein_norm);
+    // Prod has an assignment with no code on it (ANEM, 1 employee). The
+    // Python interpolated it straight in, so the dashboard has been showing
+    // the literal string "None (1)" to people; this would have shown
+    // "null (1)", which is the same bug in a different language. The row is
+    // still worth seeing -- an employee IS assigned worker comp, nobody wrote
+    // down which class -- so it is labelled rather than dropped.
+    const raw = r.worker_comp_code;
+    const code = (raw === null || raw === undefined || String(raw).trim() === '')
+      ? '(no code)' : String(raw).trim();
+    (codesByFein.get(f) ?? codesByFein.set(f, []).get(f)!)
+      .push(`${code} (${r.employees})`);
+  }
+
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  const send = [], gaps: string[] = [];
+  for (const r of cov.rows) {
+    const code = codeByFein.get(String(r.fein_norm));
+    if (!code) continue;
+    const active = n(r.active_employees);
+    const codes = codesByFein.get(String(r.fein_norm));
+    send.push({
+      dsp_short_code: code, fein: r.fein_norm, company_name: r.company_name,
+      total_employees: n(r.total_employees), active_employees: active,
+      total_with_payment_method: n(r.total_with_payment),
+      total_with_emergency_contact: n(r.total_with_emergency),
+      total_with_licence: n(r.total_with_licence),
+      active_with_payment_method: n(r.active_with_payment),
+      active_with_emergency_contact: n(r.active_with_emergency),
+      active_with_licence: n(r.active_with_licence),
+      total_with_worker_comp: n(r.total_with_worker_comp),
+      active_with_worker_comp: n(r.active_with_worker_comp),
+      worker_comp_codes: codes && codes.length ? codes.join(' · ') : null,
+      checked_date: new Date().toISOString().slice(0, 10),
+    });
+    // Staff on the books and nothing loaded for them is a real gap, not a
+    // rounding error, so it is named rather than left to a percentage.
+    const missing = [];
+    if (active > 0 && n(r.active_with_payment) === 0) missing.push('payment');
+    if (active > 0 && n(r.active_with_emergency) === 0) missing.push('emergency');
+    if (active > 0 && n(r.active_with_licence) === 0) missing.push('licence');
+    if (missing.length) gaps.push(`${code} (${active} active): no ${missing.join(', ')}`);
+  }
+
+  log.push(`${send.length} client(s) matched`);
+  gaps.slice(0, 20).forEach((g) => log.push(`  ! ${g}`));
+  if (gaps.length > 20) log.push(`  ! ... and ${gaps.length - 20} more`);
+
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - ${send.length} row(s) would be upserted, nothing sent.`);
+    return { job: 'data_coverage', ok: true, log, queryIds };
+  }
+  if (!send.length) throw new Error('no coverage rows built - refusing to write nothing');
+  for (let i = 0; i < send.length; i += 200) {
+    await dash(ctx, 'POST', 'client_data_coverage?on_conflict=dsp_short_code',
+               send.slice(i, i + 200), 'resolution=merge-duplicates');
+  }
+  log.push(`upserted ${send.length} row(s) into client_data_coverage`);
+  return { job: 'data_coverage', ok: true, log, queryIds };
+}
+
+/* ------------------------------------------------ load history (Step 1) --- */
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+/**
+ * employee.created_by is three different things, and the chart has to name a
+ * person: an email for Uzio staff, the literal 'SYSTEM' for API writes, and a
+ * UUID for client-side logins. The UUIDs are resolved through user_data; the
+ * domain is stripped from staff emails so the label matches
+ * api_activity_runs.run_by exactly.
+ */
+function classifyActor(actor: unknown, resolved: Map<string, string>): [string, string] {
+  if (actor === null || actor === undefined || actor === '') return ['-', 'n/a'];
+  if (typeof actor !== 'string') return [String(actor), 'other'];
+  if (actor === 'SYSTEM') return ['SYSTEM', 'system'];
+  if (actor.endsWith('@uzio.com')) return [actor.slice(0, -'@uzio.com'.length), 'staff'];
+  if (UUID_RE.test(actor)) return [resolved.get(actor) ?? 'Client user', 'client'];
+  return [actor, 'other'];
+}
+
+/**
+ * Port of scripts/populate_load_history.py.
+ *
+ * api_activity_runs records one last_run_date per module, and that single date
+ * hides the shape of a load: Stave's census log says 08 Aug, but 982 of its
+ * 989 employees landed on 29 Jul and only 7 came on the 8th. Inferring the
+ * "real" date from prod got to 69-76% agreement and no further -- the honest
+ * fix is not a better guess, it is showing the whole history.
+ *
+ * Terminations are scoped to on-or-after the client's first load. Without
+ * that, the census's imported history puts departures back to 2018 on the
+ * chart -- 19,159 client-day pairs that predate Uzio ever holding the client,
+ * against 1,609 real ones.
+ */
+async function loadHistory(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+
+  const codeByFein = new Map<string, string>();
+  for (const r of await dashSelect(ctx, 'client_overview',
+                                   'select=dsp_short_code,fein&fein=not.is.null')) {
+    codeByFein.set(String(r.fein), String(r.dsp_short_code));
+  }
+  log.push(`${codeByFein.size} DSPs with a fein`);
+  if (!codeByFein.size) {
+    return { job: 'load_history', ok: true, log: [...log, 'nothing to do'], queryIds: [] };
+  }
+  const inlist = sqlList([...codeByFein.keys()]);
+  const queryIds: string[] = [];
+
+  const addedSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, " +
+    'cast(e.created_date as date) as event_date, e.created_by as actor, count(*) as employees ' +
+    'from employer_organization eo ' +
+    'join employee e on e.employer_organization_id = eo.id and e.deleted = 0 ' +
+    'where eo.deleted = 0 and e.created_date is not null ' +
+    `and replace(coalesce(eo.fein,''),'-','') in (${inlist}) ` +
+    'group by 1,2,3 order by 1,2,3';
+
+  const termSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, " +
+    'cast(e.date_of_termination as date) as event_date, count(*) as employees ' +
+    'from employer_organization eo ' +
+    'join employee e on e.employer_organization_id = eo.id and e.deleted = 0 ' +
+    'join (select employer_organization_id as oid, min(cast(created_date as date)) as first_load ' +
+    '      from employee where deleted = 0 group by 1) f on f.oid = eo.id ' +
+    'where eo.deleted = 0 and e.date_of_termination is not null ' +
+    'and e.date_of_termination >= f.first_load ' +
+    `and replace(coalesce(eo.fein,''),'-','') in (${inlist}) ` +
+    'group by 1,2 order by 1,2';
+
+  const all: { fein: string; day: string; kind: string; actor: unknown; n: number }[] = [];
+  for (const [kind, sql] of [['added', addedSql], ['terminated', termSql]] as const) {
+    const q = await prodQuery(sql, { ...ctx.creds, size: 5000 });
+    queryIds.push(...q.queryIds);
+    log.push(`  ${kind}: ${q.rows.length} rows from prod`);
+    for (const r of q.rows) {
+      all.push({ fein: String(r.fein_norm), day: String(r.event_date).slice(0, 10),
+                 kind, actor: r.actor ?? null, n: Number(r.employees ?? 0) || 0 });
+    }
+  }
+
+  // Resolve client-side UUIDs to usernames, chunked because the identifiers
+  // go into an IN clause.
+  const uuids = [...new Set(all.map((r) => r.actor)
+    .filter((a): a is string => typeof a === 'string' && UUID_RE.test(a)))].sort();
+  const resolved = new Map<string, string>();
+  for (let i = 0; i < uuids.length; i += 200) {
+    const q = await prodQuery(
+      'select user_identifier, username from user_data where user_identifier in (' +
+      sqlList(uuids.slice(i, i + 200)) + ') order by user_identifier',
+      { ...ctx.creds, size: 2000 });
+    queryIds.push(...q.queryIds);
+    for (const r of q.rows) resolved.set(String(r.user_identifier), String(r.username));
+  }
+  log.push(`resolved ${resolved.size} of ${uuids.length} client-side UUIDs to usernames`);
+
+  // Two raw actors can normalise to one label (two unresolved UUIDs both
+  // become "Client user"), so sum rather than let the primary key reject the
+  // second row.
+  const merged = new Map<string, { row: Record<string, unknown>; n: number }>();
+  for (const r of all) {
+    const code = codeByFein.get(r.fein);
+    if (!code) continue;
+    const [actor, actorType] = classifyActor(r.actor, resolved);
+    const k = `${code}|${r.day}|${r.kind}|${actor}`;
+    const hit = merged.get(k);
+    if (hit) { hit.n += r.n; continue; }
+    merged.set(k, { n: r.n, row: { dsp_short_code: code, event_date: r.day,
+                                   kind: r.kind, actor, actor_type: actorType } });
+  }
+  const send = [...merged.values()].map((m) => ({ ...m.row, employees: m.n }));
+  const codes = [...new Set(send.map((r) => String(r.dsp_short_code)))];
+  log.push(`${send.length} event row(s) across ${codes.length} client(s)`);
+
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - ${send.length} row(s) would replace the slice for ` +
+             `${codes.length} client(s), nothing sent.`);
+    return { job: 'load_history', ok: true, log, queryIds };
+  }
+  if (!send.length) throw new Error('no load events built - refusing to delete the table');
+
+  // Fully derived, so each client's slice is rebuilt rather than merged -- a
+  // stale event row would otherwise survive forever. Prod is read in full
+  // before anything is deleted, so a failed read leaves the table alone.
+  for (let i = 0; i < codes.length; i += 100) {
+    await dash(ctx, 'DELETE',
+      'client_load_events?dsp_short_code=in.(' +
+      codes.slice(i, i + 100).map((c) => `"${c}"`).join(',') + ')');
+  }
+  for (let i = 0; i < send.length; i += 500) {
+    await dash(ctx, 'POST', 'client_load_events', send.slice(i, i + 500));
+  }
+  log.push(`replaced ${send.length} row(s) in client_load_events`);
+  return { job: 'load_history', ok: true, log, queryIds };
+}
+
+/* --------------------------------------------- system activity (Step 1) --- */
+
+/** Prod hands back timestamps; these columns are dates. */
+const day10 = (v: unknown) => (v === null || v === undefined || v === '')
+  ? null : String(v).slice(0, 10);
+
+/**
+ * Port of scripts/populate_system_activity.py.
+ *
+ * Whether each client is actually USING time tracking and payroll, as opposed
+ * to having been set up for them. Four queries rather than one join, because
+ * they aggregate over different grains and joining them would multiply.
+ *
+ * Two distinctions the columns exist to keep:
+ *   IMPORT/SYSTEM attendance rows are migrated history, not someone punching a
+ *   clock, so tt_first_live_date excludes them while tt_first_entry_date does
+ *   not. PRIOR paychecks are migration loads of the old vendor's payrolls;
+ *   only NORMAL means the client is running payroll on Uzio.
+ */
+async function systemActivity(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+
+  const codeByFein = new Map<string, string>();
+  for (const r of await dashSelect(ctx, 'client_overview',
+                                   'select=dsp_short_code,fein&fein=not.is.null')) {
+    codeByFein.set(String(r.fein), String(r.dsp_short_code));
+  }
+  log.push(`${codeByFein.size} DSPs with a known fein`);
+  if (!codeByFein.size) {
+    return { job: 'system_activity', ok: true, log: [...log, 'nothing to do'], queryIds: [] };
+  }
+  const inlist = sqlList([...codeByFein.keys()]);
+  const queryIds: string[] = [];
+
+  const ttSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, " +
+    "min(case when a.source not in ('IMPORT','SYSTEM') then a.day end) as first_live, " +
+    'min(a.day) as first_any, max(a.day) as last_any, ' +
+    "count(distinct case when a.source not in ('IMPORT','SYSTEM') then a.employee_code end) as emps_punched, " +
+    "count(case when a.source not in ('IMPORT','SYSTEM') then 1 end) as live_entries, " +
+    "count(case when a.source in ('IMPORT','SYSTEM') then 1 end) as imported_entries " +
+    'from employer_organization eo ' +
+    'join utt_employee_attendance a on a.ein = eo.ein and a.deleted = 0 and coalesce(a.discarded, 0) = 0 ' +
+    `where eo.deleted = 0 and replace(coalesce(eo.fein,''),'-','') in (${inlist}) ` +
+    'group by 1 order by 1';
+
+  // utt_employee has no employer column, so enrollment goes through
+  // employee.employee_code.
+  const setupSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, eo.company_name, " +
+    'max(coalesce(s.is_completed, 0)) as setup_completed, ' +
+    'count(distinct ue.employee_code) as enrolled ' +
+    'from employer_organization eo ' +
+    'left join utt_employer_setting s on s.employer_ein = eo.ein and s.deleted = 0 ' +
+    'left join employee e on e.employer_organization_id = eo.id and e.deleted = 0 ' +
+    'left join utt_employee ue on ue.employee_code = e.employee_code and ue.deleted = 0 ' +
+    `where eo.deleted = 0 and replace(coalesce(eo.fein,''),'-','') in (${inlist}) ` +
+    'group by 1, 2 order by 1';
+
+  const payrollSql =
+    "select replace(coalesce(d.fein,''),'-','') as fein_norm, " +
+    "min(case when d.paycheck_type = 'NORMAL' then d.pay_date end) as first_normal, " +
+    "max(case when d.paycheck_type = 'NORMAL' then d.pay_date end) as last_normal, " +
+    "count(case when d.paycheck_type = 'NORMAL' then 1 end) as normal_runs, " +
+    "count(case when d.paycheck_type = 'PRIOR' then 1 end) as prior_loads " +
+    'from ups_employer_paycheck_detail d ' +
+    "where d.deleted = 0 and d.status = 'APPROVED' and coalesce(d.payroll_status,'') <> 'VOIDED' " +
+    `and replace(coalesce(d.fein,''),'-','') in (${inlist}) ` +
+    'group by 1 order by 1';
+
+  // A window function keeps the most-recent-run lookup to one SELECT, which
+  // is all the NeuronOps guard allows.
+  const lastRunSql =
+    'select fein_norm, employee_count from (' +
+    "  select replace(coalesce(d.fein,''),'-','') as fein_norm, d.employee_count, " +
+    "  row_number() over (partition by replace(coalesce(d.fein,''),'-','') " +
+    '    order by d.pay_date desc, d.id desc) as rn ' +
+    '  from ups_employer_paycheck_detail d ' +
+    "  where d.deleted = 0 and d.status = 'APPROVED' " +
+    "  and coalesce(d.payroll_status,'') <> 'VOIDED' and d.paycheck_type = 'NORMAL' " +
+    `  and replace(coalesce(d.fein,''),'-','') in (${inlist}) ` +
+    ') t where rn = 1 order by fein_norm';
+
+  const byFein = async (sql: string, size = 2000) => {
+    const q = await prodQuery(sql, { ...ctx.creds, size });
+    queryIds.push(...q.queryIds);
+    const m = new Map<string, Record<string, unknown>>();
+    for (const r of q.rows) m.set(String(r.fein_norm), r);
+    return m;
+  };
+
+  const setup = await byFein(setupSql);
+  const tt = await byFein(ttSql);
+  const pr = await byFein(payrollSql);
+  let lastEmp = new Map<string, Record<string, unknown>>();
+  try {
+    lastEmp = await byFein(lastRunSql);
+  } catch (e) {
+    // The only non-flat SELECT here. If the guard ever rejects it, the rest of
+    // the refresh still lands and the column goes null rather than stale.
+    log.push(`last-run employee-count query rejected (${(e as Error).message.slice(0, 80)}) ` +
+             '- leaving that column null');
+  }
+  log.push(`prod rows: setup=${setup.size} tt=${tt.size} payroll=${pr.size} ` +
+           `last-run=${lastEmp.size}`);
+
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  const send = [];
+  for (const [fein, code] of codeByFein) {
+    const s = setup.get(fein), t = tt.get(fein), p = pr.get(fein);
+    if (!s && !t && !p) continue;        // nothing to say about this client
+    const le = lastEmp.get(fein);
+    send.push({
+      dsp_short_code: code, fein, company_name: s ? s.company_name : null,
+      // is_completed is a smallint in prod, not a boolean.
+      tt_setup_completed: Boolean(s && n(s.setup_completed)),
+      tt_enrolled_employees: s ? n(s.enrolled) : 0,
+      tt_first_live_date: t ? day10(t.first_live) : null,
+      tt_first_entry_date: t ? day10(t.first_any) : null,
+      tt_last_entry_date: t ? day10(t.last_any) : null,
+      tt_employees_punched: t ? n(t.emps_punched) : 0,
+      tt_live_entries: t ? n(t.live_entries) : 0,
+      tt_imported_entries: t ? n(t.imported_entries) : 0,
+      pr_first_normal_date: p ? day10(p.first_normal) : null,
+      pr_last_normal_date: p ? day10(p.last_normal) : null,
+      pr_normal_runs: p ? n(p.normal_runs) : 0,
+      pr_last_run_employees: le ? n(le.employee_count) : null,
+      pr_prior_loads: p ? n(p.prior_loads) : 0,
+      checked_date: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  const ttLive = send.filter((r) => r.tt_first_live_date).length;
+  const prLive = send.filter((r) => r.pr_first_normal_date).length;
+  log.push(`${send.length} client(s): ${ttLive} live on time tracking, ` +
+           `${prLive} running payroll on Uzio`);
+
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - ${send.length} row(s) would be upserted, nothing sent.`);
+    return { job: 'system_activity', ok: true, log, queryIds };
+  }
+  if (!send.length) throw new Error('no system activity rows built - refusing to write nothing');
+  for (let i = 0; i < send.length; i += 200) {
+    await dash(ctx, 'POST', 'client_system_activity?on_conflict=dsp_short_code',
+               send.slice(i, i + 200), 'resolution=merge-duplicates');
+  }
+  log.push(`upserted ${send.length} row(s) into client_system_activity`);
+  return { job: 'system_activity', ok: true, log, queryIds };
+}
+
 /* ------------------------------------------------------------- the registry */
 
 export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
@@ -614,6 +1044,9 @@ export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
   // complete as client_overview.fein is at the moment it reads.
   backfill_fein: backfillFein,
   work_locations: workLocations,
+  data_coverage: dataCoverage,
+  load_history: loadHistory,
   document_counts: documentCounts,
+  system_activity: systemActivity,
   api_activity: apiActivity,
 };

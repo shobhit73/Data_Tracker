@@ -2719,6 +2719,188 @@ function syncHistoricalToDashboard_(dryRun) {
   return log;
 }
 
+/* ======================================================================
+ * AUDIT COVERAGE — the Data Migration Tracker's "Audit File Status" tab
+ *
+ * This replaces reading Rohit's daily "Audit coverage" mail by hand (Step 3
+ * of the 12:30 routine). The tab is better than the mail on every axis: it
+ * carries 28 clients where the mail named 15, it says WHY a client has
+ * nothing (FOLDER EMPTY / NO FOLDER MATCH / NOT IN SOURCE) where the mail
+ * just omitted them, and it is itself written by an import rather than typed.
+ *
+ * It lives in Apps Script and not in the prod-refresh Edge Function for the
+ * obvious reason: this is a Google Sheet, and Apps Script can simply open it.
+ *
+ * TWO THINGS IT MUST NOT TOUCH
+ *   - The `Overall` category. There is no such column in the sheet; those
+ *     rows are hand-written explanations of why a client has no audit files
+ *     at all, and they are the only record of that reasoning.
+ *   - An existing `notes`, and an existing `Not applicable`. Both are human
+ *     decisions. InnovDel's Census file sits in Drive under a generic
+ *     `Client_Uzio_ADP_Census…` name rather than an InnovDel_ prefix, so an
+ *     automated check reports it missing when it is not — that note is the
+ *     only thing standing between the reader and a wrong conclusion.
+ *
+ * A BLANK CELL IS NOT "Missing". The clients with no folder at all have the
+ * six columns empty and the reason in Coverage. Writing Missing for them
+ * would assert that someone looked and found nothing, which is not what
+ * happened. Those are skipped and listed in the log.
+ * ====================================================================== */
+
+// Shruti/Rohit's 'Data Migration Tracker' — READ ONLY, never write.
+var MIGRATION_TRACKER_ID = '1xhTw9957pbOb32bFSguL1Q0Ybkcr0loPKysZcO4ny84';
+var AUDIT_TAB = 'Audit File Status';
+
+// Sheet column header -> audit_coverage.audit_category.
+var AUDIT_CATEGORIES = {
+  'Census Audit': 'Census',
+  'Withholding Audit': 'Withholding',
+  'Payment Audit': 'Payment',
+  'Prior Payroll Audit': 'Prior Payroll',
+  'Deduction Audit': 'Deduction',
+  'Emergency Contact Audit': 'Emergency Contact'
+};
+
+function syncAuditCoverage_(dryRun) {
+  var log = [];
+  var conf = sbConf_('DASH');
+  if (!conf) {
+    log.push('Audit coverage sync skipped: DASH_URL / DASH_SERVICE_KEY not set.');
+    return log;
+  }
+
+  var sh = SpreadsheetApp.openById(MIGRATION_TRACKER_ID).getSheetByName(AUDIT_TAB);
+  if (!sh) throw new Error('Tab "' + AUDIT_TAB + '" not found in the Data Migration Tracker');
+  var values = sh.getDataRange().getValues();
+  if (values.length < 2) {
+    log.push('Audit File Status tab has no data rows - nothing to sync.');
+    return log;
+  }
+
+  var idx = {};
+  values[0].forEach(function (h, i) {
+    var n = norm(h);
+    if (n && !idx.hasOwnProperty(n)) idx[n] = i;
+  });
+  var col = { client: idx[norm('Client')], coverage: idx[norm('Coverage')],
+              checked: idx[norm('Last Checked')] };
+  if (col.client === undefined) {
+    throw new Error('Audit File Status: no "Client" column - refusing to guess');
+  }
+  var catCol = {}, missingCols = [];
+  Object.keys(AUDIT_CATEGORIES).forEach(function (h) {
+    var n = norm(h);
+    if (idx.hasOwnProperty(n)) catCol[AUDIT_CATEGORIES[h]] = idx[n];
+    else missingCols.push(h);
+  });
+  // Same rule as the tracker sync: a renamed column means shifted data, and
+  // writing shifted data over good rows is worse than stopping.
+  if (missingCols.length) {
+    throw new Error('Audit File Status columns not found, refusing to write ' +
+                    'shifted data: ' + missingCols.join(', '));
+  }
+
+  var existing = {};   // "client|category" -> row
+  sbSelectAll_(conf, 'audit_coverage').forEach(function (r) {
+    existing[r.client_name + '|' + r.audit_category] = r;
+  });
+
+  var send = [], noFolder = [], kept = [], changes = [];
+  for (var r = 1; r < values.length; r++) {
+    var client = String(values[r][col.client] || '').trim();
+    if (!client) continue;
+    var coverage = col.coverage === undefined ? ''
+      : String(values[r][col.coverage] || '').trim();
+
+    var any = false;
+    Object.keys(catCol).forEach(function (cat) {
+      if (String(values[r][catCol[cat]] || '').trim()) any = true;
+    });
+    if (!any) {
+      // No folder, or no folder match: nobody looked, so nothing is asserted.
+      noFolder.push(client + (coverage ? ' (' + coverage + ')' : ''));
+      return;
+    }
+
+    var checked = values[r][col.checked];
+    var checkedDate = (Object.prototype.toString.call(checked) === '[object Date]'
+      && !isNaN(checked.getTime()))
+      ? Utilities.formatDate(checked, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : String(checked || '').slice(0, 10) || null;
+
+    Object.keys(catCol).forEach(function (cat) {
+      var raw = String(values[r][catCol[cat]] || '').trim();
+      if (!raw) return;
+      var status = raw.toLowerCase() === 'present' ? 'Present'
+                 : raw.toLowerCase() === 'missing' ? 'Missing' : null;
+      if (!status) return;           // anything unexpected is left alone
+
+      var cur = existing[client + '|' + cat];
+      // A human wrote this off; the sheet does not get to argue.
+      if (cur && cur.status === 'Not applicable') {
+        kept.push(client + ' / ' + cat);
+        return;
+      }
+      if (cur && cur.status === status) return;    // nothing to say
+
+      var row = {
+        client_name: client, audit_category: cat, status: status,
+        checked_date: checkedDate,
+        source: 'Audit File Status tab, Data Migration Tracker',
+        updated_at: new Date().toISOString()
+      };
+      // notes is only ever written when there is none: it holds the reasons a
+      // person recorded, and the sheet carries nothing that improves on them.
+      if (cur && cur.notes) row.notes = cur.notes;
+      else if (coverage && /^(FOLDER|NO |NOT IN)/i.test(coverage)) row.notes = coverage;
+      if (cur && cur.audit_folder_url) row.audit_folder_url = cur.audit_folder_url;
+
+      send.push(row);
+      changes.push(client + ' / ' + cat + ': ' +
+                   (cur ? cur.status + ' -> ' : '+ ') + status);
+    });
+  }
+
+  log.push('Audit File Status: ' + (values.length - 1) + ' row(s) in the tab');
+  log.push('  ' + send.length + ' category row(s) to write, ' +
+           kept.length + ' left as Not applicable, ' +
+           noFolder.length + ' client(s) with nothing assessed');
+  changes.slice(0, 25).forEach(function (c) { log.push('  ~ ' + c); });
+  if (changes.length > 25) log.push('  ~ ... and ' + (changes.length - 25) + ' more');
+  if (kept.length) log.push('  = kept: ' + kept.slice(0, 10).join(', '));
+  if (noFolder.length) log.push('  - not assessed: ' + noFolder.join(', '));
+
+  if (!send.length) {
+    log.push('Nothing to write - audit_coverage already matches the tab.');
+    return log;
+  }
+  if (dryRun) {
+    log.push('DRY RUN - ' + send.length + ' row(s) would be written, nothing sent.');
+    return log;
+  }
+  for (var i = 0; i < send.length; i += 200) {
+    sbFetch_(conf, 'post', 'audit_coverage?on_conflict=client_name,audit_category',
+             send.slice(i, i + 200), 'resolution=merge-duplicates');
+  }
+  log.push('Wrote ' + send.length + ' row(s) to audit_coverage.');
+  return log;
+}
+
+/** Dry run: what the audit-coverage sync would change, writing nothing. */
+function previewAuditCoverage() {
+  var log = syncAuditCoverage_(true);
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+/** Apply it. Read previewAuditCoverage first. */
+function applyAuditCoverage() {
+  var log = syncAuditCoverage_(false);
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+
 /** Dry run: what the sync would change, writing nothing. */
 function previewHistoricalSync() {
   var log = syncHistoricalToDashboard_(true);
@@ -3261,6 +3443,15 @@ function runDaily() {
     syncOverviewFromTracker_(false).forEach(function (l) { console.log(l); });
   } catch (e) {
     console.log('OVERVIEW SYNC FAILED: ' + e.message);
+  }
+
+  // Step 3: the Audit File Status tab -> audit_coverage. Was a human reading
+  // Rohit's daily mail; the tab says the same thing for twice as many clients
+  // and says why when a client has nothing.
+  try {
+    syncAuditCoverage_(false).forEach(function (l) { console.log(l); });
+  } catch (e) {
+    console.log('AUDIT COVERAGE SYNC FAILED: ' + e.message);
   }
 
   // Step 2b, which used to be sync_historical_from_sheet.py in the 12:30

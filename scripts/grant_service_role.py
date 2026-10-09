@@ -44,10 +44,20 @@ from supabase_helper import connect
 # upserts, so delete would be a privilege nothing uses and a way to lose the
 # table to one bad call.
 WRITE = {
+    # Apps Script, Step 2b
     "historical_scope": "insert, update, delete",
     "historical_report_status": "insert, update, delete",
     "historical_scope_excluded": "insert, update, delete",
+    # Apps Script Step 2 (upsert) and the Edge Function's backfill_fein (update)
     "client_overview": "insert, update",
+    # The prod-refresh Edge Function. work_locations replaces its table whole,
+    # so it is the only one here that needs delete; the rest upsert.
+    "client_work_locations": "insert, delete",
+    "client_document_counts": "insert, update",
+    "api_activity_runs": "insert, update",
+    # client_data_coverage, client_load_events and client_system_activity are
+    # deliberately absent: their jobs are not ported yet, and a table nothing
+    # writes should not be writable. Add each one WITH its job.
 }
 
 # Human-owned. Deliberately select-only -- see the module docstring.

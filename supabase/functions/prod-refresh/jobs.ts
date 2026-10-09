@@ -172,6 +172,222 @@ async function workLocations(ctx: JobCtx): Promise<JobResult> {
   return { job: 'work_locations', ok: true, log, queryIds };
 }
 
+/* ------------------------------------------------- fein backfill (Step 1) - */
+
+// Legal suffixes dropped before matching, so "Lazo Logistics LLC" and
+// "LAZO LOGISTICS, L.L.C." land on the same key.
+const FEIN_SUFFIXES = /\b(LLC|L L C|INC|CORP|CORPORATION|CO|LTD|LP)\.?\b/g;
+
+function feinNormalizeName(name: unknown): string {
+  return String(name ?? '').toUpperCase()
+    .replace(/[.,]/g, ' ')
+    .replace(FEIN_SUFFIXES, ' ')
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Port of scripts/backfill_fein.py.
+ *
+ * Matches client_overview rows that have no fein against prod's DSP-tagged
+ * employers, on the normalised company name. Exactly one candidate is a match;
+ * several is ambiguous and is reported rather than guessed, because picking
+ * the wrong employer silently attaches a client to someone else's data.
+ *
+ * This is the job that shrinks feinNames.ts: five clients are pinned there
+ * only because they have no fein here.
+ */
+async function backfillFein(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+
+  const targets = await dashSelect(
+    ctx, 'client_overview', 'select=dsp_short_code,dsp_name&fein=is.null');
+  log.push(`${targets.length} client(s) in client_overview have no fein`);
+  if (!targets.length) {
+    return { job: 'backfill_fein', ok: true, log, queryIds: [] };
+  }
+
+  const sql =
+    'select company_name, company_identifier, ' +
+    "replace(coalesce(fein,''),'-','') as fein_norm, live_status " +
+    'from employer_organization ' +
+    "where deleted=0 and company_identifier like 'DSP%' " +
+    'order by company_name';
+  const { rows, queryIds, tookMs } = await prodQuery(sql, { ...ctx.creds, size: 2000 });
+  log.push(`prod returned ${rows.length} DSP-tagged employers in ${tookMs}ms`);
+
+  const byName = new Map<string, Record<string, unknown>[]>();
+  for (const r of rows) {
+    const k = feinNormalizeName(r.company_name);
+    if (!k) continue;
+    (byName.get(k) ?? byName.set(k, []).get(k)!).push(r);
+  }
+
+  // A fein already on another row would violate the UNIQUE on client_overview
+  // .fein. Python let the whole transaction fail; naming the collision is more
+  // use than a 409 nobody can place.
+  const taken = new Set<string>();
+  for (const r of await dashSelect(ctx, 'client_overview',
+                                   'select=fein&fein=not.is.null')) {
+    taken.add(String(r.fein));
+  }
+
+  const matched: { code: string; fein: string; name: string }[] = [];
+  const ambiguous: string[] = [], unmatched: string[] = [], collisions: string[] = [];
+
+  for (const t of targets) {
+    const code = String(t.dsp_short_code);
+    const cands = byName.get(feinNormalizeName(t.dsp_name)) ?? [];
+    if (cands.length > 1) {
+      ambiguous.push(`${code} / ${t.dsp_name} -> ` +
+        cands.map((c) => `${c.company_name} (${c.fein_norm})`).join(' | '));
+      continue;
+    }
+    if (!cands.length) { unmatched.push(`${code}: ${t.dsp_name}`); continue; }
+    const fein = String(cands[0].fein_norm || '');
+    if (!fein) { unmatched.push(`${code}: ${t.dsp_name} (prod employer has no fein)`); continue; }
+    if (taken.has(fein)) {
+      collisions.push(`${code} / ${t.dsp_name} -> ${fein}, already on another client`);
+      continue;
+    }
+    taken.add(fein);
+    matched.push({ code, fein, name: String(t.dsp_name) });
+  }
+
+  log.push(`matched ${matched.length} | ambiguous ${ambiguous.length} | ` +
+           `unmatched ${unmatched.length} | collisions ${collisions.length}`);
+  matched.forEach((m) => log.push(`  + ${m.code} ${m.fein}  ${m.name}`));
+  ambiguous.forEach((a) => log.push(`  ? ${a}`));
+  collisions.forEach((c) => log.push(`  ! ${c}`));
+  unmatched.slice(0, 20).forEach((u) => log.push(`  - ${u}`));
+  if (unmatched.length > 20) log.push(`  - ... and ${unmatched.length - 20} more`);
+
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - ${matched.length} fein(s) would be set, nothing written.`);
+    return { job: 'backfill_fein', ok: true, log, queryIds };
+  }
+  // One PATCH per row: this sets a single column on a handful of rows, and an
+  // upsert would have to resend every NOT NULL column to do it.
+  for (const m of matched) {
+    await dash(ctx, 'PATCH',
+      `client_overview?dsp_short_code=eq.${encodeURIComponent(m.code)}`,
+      { fein: m.fein, updated_at: new Date().toISOString() });
+  }
+  log.push(`set fein on ${matched.length} client(s)`);
+
+  return { job: 'backfill_fein', ok: true, log, queryIds };
+}
+
+/* ---------------------------------------------- document counts (Step 1) -- */
+
+const AMAZON_EXCHANGE = 'EX-20243277-1b50-4035-821d-d0fcd9b895a9';
+
+/**
+ * Port of scripts/populate_document_counts.py.
+ *
+ * Counts the employee documents actually in Uzio, rather than trusting the
+ * transfer-completion mails -- several of those say "completed successfully"
+ * with no count at all, one reported Success=0 and corrected itself minutes
+ * later, and none can say what is in the system NOW rather than what was
+ * uploaded that day.
+ *
+ * Employee documents are rows in `form` with category = 'EMPLOYEE_DOC', joined
+ * on form.user_organization_id = employee.employee_code (a varchar UUID, not
+ * the numeric employee.id). Not employee_document, which is empty across all
+ * of prod. See .claude/docs/prod-table-lookup-gotchas.md.
+ *
+ * The two queries stay separate on purpose: joining headcount into the
+ * document count would multiply one by the other, and an inner join would drop
+ * every client with no documents yet -- exactly the ones worth seeing.
+ */
+async function documentCounts(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+  const ex = AMAZON_EXCHANGE;
+
+  const docsSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, eo.company_name, " +
+    'count(*) as documents, ' +
+    'count(distinct f.user_organization_id) as employees_with_docs ' +
+    'from employer_organization eo ' +
+    'join employee e on e.employer_organization_id = eo.id and e.deleted = 0 ' +
+    'join form f on f.user_organization_id = e.employee_code ' +
+    "           and f.category = 'EMPLOYEE_DOC' and f.deleted = 0 " +
+    `where eo.exchange_id = '${ex}' and eo.deleted = 0 ` +
+    'group by 1, 2 order by 1';
+
+  const staffSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein_norm, eo.company_name, " +
+    'count(*) as total_employees, ' +
+    'count(*) filter (where e.date_of_termination is null) as active_employees ' +
+    'from employer_organization eo ' +
+    'join employee e on e.employer_organization_id = eo.id and e.deleted = 0 ' +
+    `where eo.exchange_id = '${ex}' and eo.deleted = 0 ` +
+    'group by 1, 2 order by 1';
+
+  const d = await prodQuery(docsSql, { ...ctx.creds, size: 2000 });
+  const s = await prodQuery(staffSql, { ...ctx.creds, size: 2000 });
+  const queryIds = [...d.queryIds, ...s.queryIds];
+
+  const docs = new Map<string, Record<string, unknown>>();
+  for (const r of d.rows) if (r.fein_norm) docs.set(String(r.fein_norm), r);
+  const staff = new Map<string, Record<string, unknown>>();
+  for (const r of s.rows) if (r.fein_norm) staff.set(String(r.fein_norm), r);
+  log.push(`prod: ${staff.size} employers on the Amazon exchange, ` +
+           `${docs.size} of them with documents`);
+
+  const codeByFein = new Map<string, string>();
+  for (const r of await dashSelect(ctx, 'client_overview',
+                                   'select=dsp_short_code,fein&fein=not.is.null')) {
+    codeByFein.set(String(r.fein).replace(/-/g, ''), String(r.dsp_short_code));
+  }
+
+  const send = [], unmatched: string[] = [];
+  for (const [fein, st] of staff) {
+    const code = codeByFein.get(fein);
+    if (!code) {
+      const n = Number((docs.get(fein) ?? {}).documents ?? 0);
+      unmatched.push(`${fein} ${String(st.company_name).slice(0, 44)} (${n} docs)`);
+      continue;
+    }
+    const dd = docs.get(fein) ?? {};
+    send.push({
+      dsp_short_code: code, fein, company_name: st.company_name,
+      documents: Number(dd.documents ?? 0),
+      employees_with_docs: Number(dd.employees_with_docs ?? 0),
+      total_employees: Number(st.total_employees ?? 0),
+      active_employees: Number(st.active_employees ?? 0),
+      checked_at: new Date().toISOString(),
+    });
+  }
+
+  log.push(`${send.length} client(s) matched to a DSP row`);
+  if (unmatched.length) {
+    log.push(`${unmatched.length} prod employer(s) with no matching DSP row ` +
+             `(no fein on the tracker side, or a test employer): ` +
+             unmatched.slice(0, 12).join(', '));
+  }
+
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - ${send.length} row(s) would be upserted, nothing sent.`);
+    return { job: 'document_counts', ok: true, log, queryIds };
+  }
+  if (!send.length) {
+    throw new Error('no document counts built - refusing to write nothing');
+  }
+  // A count is a snapshot, not a verdict: the upload API runs for hours, so a
+  // client can legitimately be half-loaded. checked_at is what makes the
+  // number readable, and employees_with_docs next to the total is what shows a
+  // run that stopped early.
+  for (let i = 0; i < send.length; i += 200) {
+    await dash(ctx, 'POST', 'client_document_counts?on_conflict=dsp_short_code',
+               send.slice(i, i + 200), 'resolution=merge-duplicates');
+  }
+  log.push(`upserted ${send.length} row(s) into client_document_counts`);
+
+  return { job: 'document_counts', ok: true, log, queryIds };
+}
+
 /* ---------------------------------------------- API activity (Step 4b) ---- */
 
 /**
@@ -394,6 +610,10 @@ async function apiActivity(ctx: JobCtx): Promise<JobResult> {
 /* ------------------------------------------------------------- the registry */
 
 export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
+  // backfill_fein runs first: everything keyed on fein below is only as
+  // complete as client_overview.fein is at the moment it reads.
+  backfill_fein: backfillFein,
   work_locations: workLocations,
+  document_counts: documentCounts,
   api_activity: apiActivity,
 };

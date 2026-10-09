@@ -1580,17 +1580,25 @@ function clientAuditSection(client){
   if(!rows.length){
     return section('Audit Coverage', emptyNote('Not on the audit-coverage roster (14 clients are tracked).'));
   }
-  const overallOnly = rows.length === 1 && rows[0].audit_category === 'Overall';
-  if(overallOnly){
-    const r = rows[0];
+  // 'Overall' is not a seventh audit. It is the row that explains why a client
+  // has no audit files at all, and it carries a human-written reason. It used
+  // to be the ONLY row such a client had, so "one row and it is Overall" was a
+  // fair test for "not scored". Since the Audit File Status tab became the
+  // source those clients also get six real category rows, and counting Overall
+  // among them put a nonsense seventh pip on the card and dragged the score to
+  // zero. Separate it out: categories are scored, Overall is explanation.
+  const overall = rows.filter(a => a.audit_category === 'Overall')[0];
+  const cats = rows.filter(a => a.audit_category !== 'Overall');
+  if(!cats.length){
+    const r = overall || rows[0];
     return section('Audit Coverage',
       '<p style="margin:0"><span class="uzio-status uzio-status--neutral">' + esc(r.status) + '</span>' +
       (r.notes ? ' <span style="font-size:12.5px;color:var(--uzio-color-text-muted)">' + esc(r.notes) + '</span>' : '') + '</p>');
   }
-  const present = rows.filter(a => a.status === 'Present').length;
-  const pct = rows.length ? present / rows.length * 100 : 0;
+  const present = cats.filter(a => a.status === 'Present').length;
+  const pct = cats.length ? present / cats.length * 100 : 0;
   const fill = pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
-  const pips = rows.map(a =>
+  const pips = cats.map(a =>
     '<span class="cat-pip cat-pip--' + (a.status === 'Present' ? 'yes' : 'no') + '">' + esc(a.audit_category) + '</span>').join('');
   const notes = rows.filter(a => a.notes).map(a => a.audit_category + ' — ' + a.notes);
   return section('Audit Coverage',
@@ -2031,9 +2039,16 @@ function renderAudit(rows){
 
   const scored = order.map(client => {
     const recs = byClient[client];
-    const overallOnly = recs.length === 1 && recs[0].audit_category === 'Overall';
-    const present = recs.filter(r => r.status === 'Present');
-    return { client, recs, overallOnly, present: present.length, total: overallOnly ? 0 : recs.length };
+    // Same split as the client card: 'Overall' explains a client with no audit
+    // files, it is not a seventh audit, and scoring it drags the card to zero
+    // and adds a meaningless pip. A client is unscored when it has no real
+    // category rows -- not when it happens to have exactly one row.
+    const overall = recs.filter(r => r.audit_category === 'Overall')[0];
+    const cats = recs.filter(r => r.audit_category !== 'Overall');
+    const overallOnly = !cats.length;
+    const present = cats.filter(r => r.status === 'Present');
+    return { client, recs, cats, overall, overallOnly,
+             present: present.length, total: cats.length };
   });
   scored.sort((a, b) => {
     if(a.overallOnly !== b.overallOnly) return a.overallOnly ? 1 : -1;
@@ -2046,7 +2061,7 @@ function renderAudit(rows){
       ' data-cover="' + (s.overallOnly ? 'none' : (s.present === s.total ? 'full' : 'gap')) + '"' +
       ' data-census="' + (censusMissing ? '1' : '0') + '"';
     if(s.overallOnly){
-      const r = s.recs[0];
+      const r = s.overall || s.recs[0];
       return '<div class="audit-card"' + attrs + '><div class="audit-card__head"><b>' + esc(s.client) + '</b>' +
         '<span class="uzio-status uzio-status--neutral">' + esc(r.status) + '</span></div>' +
         '<div class="uzio-progress"><div class="uzio-progress__fill" style="width:0%"></div></div>' +
@@ -2058,7 +2073,7 @@ function renderAudit(rows){
     const pct = s.total ? (s.present / s.total * 100) : 0;
     const fill = pct === 100 ? '' : (pct >= 50 ? ' uzio-progress__fill--warn' : ' uzio-progress__fill--error');
     const badge = pct === 100 ? 'success' : (pct >= 50 ? 'warning' : 'error');
-    const pips = s.recs.map(r =>
+    const pips = s.cats.map(r =>
       '<span class="cat-pip cat-pip--' + (r.status === 'Present' ? 'yes' : 'no') + '">' + esc(r.audit_category) + '</span>'
     ).join('');
     const notes = s.recs.filter(r => r.notes).map(r => r.audit_category + ' — ' + r.notes);

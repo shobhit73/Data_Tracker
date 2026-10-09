@@ -1040,6 +1040,174 @@ async function systemActivity(ctx: JobCtx): Promise<JobResult> {
   return { job: 'system_activity', ok: true, log, queryIds };
 }
 
+/* ---------------------------------------------- payroll health ----------- */
+
+const DAY_MS = 86400000;
+const toMs = (iso: string) => Date.parse(iso.slice(0, 10) + 'T00:00:00Z');
+const fromMs = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const addDays = (iso: string, n: number) => fromMs(toMs(iso) + n * DAY_MS);
+const spanDays = (a: string, b: string) => Math.round((toMs(b) - toMs(a)) / DAY_MS) + 1;
+
+/** Overlapping or day-adjacent ranges collapsed into one. */
+function mergeRanges(ivs: [string, string][]): [string, string][] {
+  const out: [string, string][] = [];
+  const sorted = [...ivs].sort((x, y) => x[0] < y[0] ? -1 : x[0] > y[0] ? 1
+                                       : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0);
+  for (const [s, e] of sorted) {
+    const last = out[out.length - 1];
+    // + one day, so 31 Jan..1 Feb counts as continuous rather than a gap of
+    // nothing.
+    if (last && toMs(s) <= toMs(last[1]) + DAY_MS) {
+      if (toMs(e) > toMs(last[1])) last[1] = e;
+    } else {
+      out.push([s, e]);
+    }
+  }
+  return out;
+}
+
+/** The stretches of [lo, hi] that `covered` does not touch. */
+function findGaps(covered: [string, string][], lo: string, hi: string): [string, string][] {
+  const res: [string, string][] = [];
+  let cur = lo;
+  for (const [s, e] of covered) {
+    if (toMs(e) < toMs(lo) || toMs(s) > toMs(hi)) continue;
+    if (toMs(s) > toMs(cur)) {
+      const end = addDays(s, -1);
+      res.push([cur, toMs(end) < toMs(hi) ? end : hi]);
+    }
+    const next = addDays(e, 1);
+    if (toMs(next) > toMs(cur)) cur = next;
+    if (toMs(cur) > toMs(hi)) break;
+  }
+  if (toMs(cur) <= toMs(hi)) res.push([cur, hi]);
+  return res;
+}
+
+/**
+ * Port of scripts/populate_payroll_health.py.
+ *
+ * Does every pay period that has already run have payroll behind it in Uzio,
+ * and where does the handover from the old vendor sit.
+ *
+ * INTERVALS, NOT COUNTS. Prior payroll does not arrive one row per pay period:
+ * Lazo's whole pre-go-live year came as four consolidated rows, one spanning
+ * 2025-12-14 to 2026-03-21. Counting rows against the weekly calendar invents
+ * gaps — the first version of this check reported 23 missing periods for a
+ * client that was fully covered. Coverage is the union of the ranges the rows
+ * span, and a gap is a stretch of days none of them touch.
+ *
+ * The handover is where PRIOR ends and NORMAL begins. A gap there is a week
+ * neither system owns, invisible from either side alone — it is how North Star
+ * and Spelman each lost one.
+ */
+async function payrollHealth(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+  const YEAR_START = '2026-01-01';
+
+  const clients = new Map<string, { code: string; name: string; prev: string }>();
+  for (const r of await dashSelect(
+      ctx, 'client_overview',
+      'select=dsp_short_code,fein,dsp_name,previous_system&fein=not.is.null')) {
+    clients.set(String(r.fein), { code: String(r.dsp_short_code),
+      name: String(r.dsp_name), prev: String(r.previous_system ?? '') });
+  }
+  log.push(`${clients.size} DSPs with a fein`);
+  if (!clients.size) {
+    return { job: 'payroll_health', ok: true, log: [...log, 'nothing to do'], queryIds: [] };
+  }
+  const inlist = sqlList([...clients.keys()]);
+
+  // The last period whose payroll date has already passed: the end of the
+  // window anyone can fairly be held to.
+  const calSql =
+    "select replace(coalesce(eo.fein,''),'-','') as fein, " +
+    'max(cast(pd.pay_period_end_date as date)) as last_end ' +
+    'from employer_organization eo ' +
+    'join employer_payroll_info epi on epi.employer_organization_id = eo.id ' +
+    'join payroll_dates pd on pd.employer_payroll_info_id = epi.id and pd.deleted = 0 ' +
+    'where eo.deleted = 0 and pd.payroll_date <= current_date ' +
+    "and pd.pay_period_start_date >= '2025-01-01' " +
+    `and replace(coalesce(eo.fein,''),'-','') in (${inlist}) group by 1 order by 1`;
+
+  const rowsSql =
+    "select replace(coalesce(fein,''),'-','') as fein, paycheck_type, " +
+    'cast(payperiod_start_date as date) as s, cast(payperiod_end_date as date) as e ' +
+    'from ups_employer_paycheck_detail ' +
+    "where deleted = 0 and paycheck_type in ('PRIOR','NORMAL') " +
+    "and payperiod_end_date >= '2025-11-01' and payperiod_start_date <= current_date " +
+    `and replace(coalesce(fein,''),'-','') in (${inlist}) order by 1, 3, 4`;
+
+  const calQ = await prodQuery(calSql, { ...ctx.creds, size: 5000 });
+  const rowQ = await prodQuery(rowsSql, { ...ctx.creds, size: 5000 });
+  const queryIds = [...calQ.queryIds, ...rowQ.queryIds];
+
+  const cal = new Map<string, string>();
+  for (const r of calQ.rows) cal.set(String(r.fein), String(r.last_end).slice(0, 10));
+  const byFein = new Map<string, Record<string, [string, string][]>>();
+  for (const r of rowQ.rows) {
+    const f = String(r.fein);
+    const d = byFein.get(f) ?? byFein.set(f, {}).get(f)!;
+    (d[String(r.paycheck_type)] ??= []).push(
+      [String(r.s).slice(0, 10), String(r.e).slice(0, 10)]);
+  }
+  log.push(`${rowQ.rows.length} payroll rows from prod, ${cal.size} clients with a calendar`);
+
+  const send = [], problems: string[] = [];
+  for (const [fein, c] of clients) {
+    const hi = cal.get(fein);
+    const d = byFein.get(fein);
+    if (!hi || !d) continue;              // nothing has run yet, nothing to judge
+    const prior = mergeRanges(d.PRIOR ?? []);
+    const normal = mergeRanges(d.NORMAL ?? []);
+    const g = findGaps(mergeRanges([...(d.PRIOR ?? []), ...(d.NORMAL ?? [])]), YEAR_START, hi);
+    const gapDays = g.reduce((n, [s, e]) => n + spanDays(s, e), 0);
+    const handover = Boolean(prior.length && normal.length &&
+      toMs(normal[0][0]) > toMs(prior[prior.length - 1][1]) + DAY_MS);
+    // A client new to the platform has no previous system to load payroll
+    // from, so an empty pre-go-live stretch is correct rather than a gap.
+    // Without this, 12 of the 21 flagged clients were false alarms.
+    const isNew = c.prev.trim().toLowerCase() === 'new';
+    const status = !g.length ? 'Covered' : isNew ? 'New to platform'
+                 : handover ? 'Handover gap' : 'Gap';
+    const ranges = g.map(([s, e]) => `${s}..${e}`).join('; ');
+
+    send.push({
+      dsp_short_code: c.code, fein, company_name: c.name,
+      target_from: YEAR_START, target_to: hi,
+      prior_from: prior.length ? prior[0][0] : null,
+      prior_to: prior.length ? prior[prior.length - 1][1] : null,
+      prior_rows: (d.PRIOR ?? []).length,
+      normal_from: normal.length ? normal[0][0] : null,
+      normal_to: normal.length ? normal[normal.length - 1][1] : null,
+      normal_rows: (d.NORMAL ?? []).length,
+      handover_gap: handover, gap_days: gapDays,
+      gap_ranges: ranges || null,
+      previous_system: c.prev || null, status,
+      checked_date: new Date().toISOString().slice(0, 10),
+    });
+    if (g.length && !isNew) {
+      problems.push(`${c.name} — ${status}, ${gapDays} day(s): ${ranges}`);
+    }
+  }
+
+  log.push(`${send.length} client(s) judged, ${problems.length} with uncovered days`);
+  problems.slice(0, 15).forEach((p) => log.push(`  ! ${p}`));
+  if (problems.length > 15) log.push(`  ! ... and ${problems.length - 15} more`);
+
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - ${send.length} row(s) would be upserted, nothing sent.`);
+    return { job: 'payroll_health', ok: true, log, queryIds };
+  }
+  if (!send.length) throw new Error('no payroll health rows built - refusing to write nothing');
+  for (let i = 0; i < send.length; i += 200) {
+    await dash(ctx, 'POST', 'payroll_health?on_conflict=dsp_short_code',
+               send.slice(i, i + 200), 'resolution=merge-duplicates');
+  }
+  log.push(`upserted ${send.length} row(s) into payroll_health`);
+  return { job: 'payroll_health', ok: true, log, queryIds };
+}
+
 /* ------------------------------------------------- push to the CRM -------- */
 
 // [ours, theirs, columns to strip]. client_overview lands as client_profile:
@@ -1121,6 +1289,7 @@ export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
   load_history: loadHistory,
   document_counts: documentCounts,
   system_activity: systemActivity,
+  payroll_health: payrollHealth,
   api_activity: apiActivity,
   // Last: it copies whatever is in our Supabase at that moment, so anything
   // written after it would not reach the CRM until Apps Script's 17:30 run.

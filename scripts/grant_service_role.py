@@ -57,6 +57,7 @@ WRITE = {
     "api_activity_runs": "insert, update",
     "client_data_coverage": "insert, update",
     "client_system_activity": "insert, update",
+    "payroll_health": "insert, update",
     # load_history rebuilds each client's slice rather than merging it -- a
     # stale event row would otherwise survive forever -- so it needs delete.
     "client_load_events": "insert, delete",

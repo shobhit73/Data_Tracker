@@ -34,3 +34,6 @@ crm-merge/preview/fixture.js
 sb_secret_*
 sb_publishable_*
 *.env
+
+# Supabase CLI scratch
+supabase/.temp/

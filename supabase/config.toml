@@ -1,0 +1,29 @@
+project_id = "nqiyiherkzlhorsnyeni"
+
+# prod-refresh turns the platform's JWT gate OFF, on purpose, and checks the
+# caller itself instead. This is in config.toml rather than a --no-verify-jwt
+# flag so a later deploy cannot quietly put the gate back and break the button.
+#
+# WHY IT HAS TO BE OFF
+#   verify_jwt validates the token against the keys of the project HOSTING the
+#   function. Our callers sign in to the CRM, so their tokens are signed by the
+#   CRM's project, and the gate rejects every one of them before the function
+#   runs at all:
+#
+#       401 {"code":"UNAUTHORIZED_ASYMMETRIC_JWT","message":"Invalid JWT"}
+#
+#   That is the platform talking, not us -- our own refusal reads "sign in to
+#   the CRM to run this".
+#
+# WHAT GUARDS IT INSTEAD
+#   index.ts resolves the caller's token through the CRM project's
+#   auth.getUser() and refuses anything that does not come back as a real
+#   user. That is a STRICTER check than the gate it replaces: a project's
+#   anon key is itself a valid JWT and sails through verify_jwt, but resolves
+#   to no user and is turned away here.
+#
+#   So the function is publicly reachable and unauthenticated callers get a
+#   401 from our own code. If that check is ever weakened, this setting has to
+#   go back to true in the same commit.
+[functions.prod-refresh]
+verify_jwt = false

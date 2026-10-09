@@ -8,12 +8,21 @@
  * shared secret sitting in the browser.
  *
  * ---------------------------------------------------------------- AUTH ----
- * Supabase's own verify_jwt is necessary but NOT sufficient, and this is the
- * part worth stating plainly: the project's anon/publishable key IS a valid
- * JWT for that project, and it lives in the CRM's frontend where anyone can
- * read it. A function relying on verify_jwt alone is open to anyone who opens
- * devtools. So this one resolves the token to an actual user through
- * auth.getUser and turns away anything that is not one.
+ * The platform's verify_jwt gate is OFF for this function (supabase/config.toml
+ * says why), so the check below is the ONLY thing guarding it. Weakening it
+ * means turning that setting back on in the same commit.
+ *
+ * The gate had to go because it validates tokens against the keys of the
+ * project hosting the function, and our callers sign in to the CRM: every one
+ * of them came back 401 UNAUTHORIZED_ASYMMETRIC_JWT before this file ran.
+ *
+ * Losing it costs less than it sounds, because it was never sufficient on its
+ * own: a project's anon/publishable key IS a valid JWT for that project, and
+ * it sits in the CRM's frontend where anyone can read it out of devtools. So
+ * this resolves the token to an actual user through the CRM's auth.getUser
+ * and turns away anything that is not one -- which is strictly the stronger
+ * check. Verified against the real anon key on 09 Oct 2026: it answers
+ * "sign in to the CRM to run this".
  *
  * Any logged-in CRM user may run it (Shobhit's decision, 06 Oct 2026). The
  * caller's email is logged and returned, because the prod-side audit cannot

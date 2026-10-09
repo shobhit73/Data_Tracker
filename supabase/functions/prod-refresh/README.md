@@ -51,17 +51,34 @@ own.
 The CRM frontend then calls this function cross-origin, which the CORS headers
 already allow.
 
-## Auth: `verify_jwt` alone is not enough
+## Auth: the platform gate is off, and `getUser` is the whole guard
 
-The trap worth knowing before anyone changes this file:
+`supabase/config.toml` sets `verify_jwt = false` for this function. It had to:
+that gate validates tokens against the keys of the project hosting the
+function, and our callers sign in to the CRM, so every real user was refused
+before the code ran —
+
+```
+401 {"code":"UNAUTHORIZED_ASYMMETRIC_JWT","message":"Invalid JWT"}
+```
+
+Losing it costs less than it sounds, because it was never sufficient anyway:
 
 > A Supabase project's anon/publishable key **is itself a valid JWT** for that
 > project. It sits in the CRM's frontend, where anyone can read it out of
-> devtools. A function that relies only on `verify_jwt` is open to the public.
+> devtools. A function relying on `verify_jwt` alone is open to the public.
 
-So `index.ts` resolves the caller's token to a real user with `auth.getUser()`
-and rejects anything that does not resolve. The anon key passes `verify_jwt` and
-fails *that*. Do not remove it.
+`index.ts` resolves the caller's token to a real user through the CRM's
+`auth.getUser()` and rejects anything that does not resolve — strictly the
+stronger check. **It is now the only one.** Weakening it means setting
+`verify_jwt = true` in the same commit.
+
+Both paths were checked against the live function on 09 Oct 2026:
+
+```
+no Authorization header   -> {"error":"missing Authorization header"}
+the CRM's real anon key   -> {"error":"sign in to the CRM to run this"}
+```
 
 Any logged-in CRM user may run it (decided 06 Oct 2026).
 

@@ -36,6 +36,8 @@
  *   NEURONOPS_PASSWORD
  *   DASH_URL             our dashboard project's URL
  *   DASH_SERVICE_KEY     our project's sb_secret_ key, to write client_* tables
+ *   CRM_URL              the CRM project's URL      } push_to_crm only; the
+ *   CRM_SERVICE_KEY      the CRM's sb_secret_ key   } other jobs run without
  * Set them with `supabase secrets set`. They are never committed, and nothing
  * here echoes one back -- including in an error.
  *
@@ -148,6 +150,11 @@ Deno.serve(async (req: Request) => {
     const obFein = Deno.env.get('ONBOARDING_FEIN');
     if (obUser && obPass && obFein) {
       ctx.onboarding = { username: obUser, password: obPass, fein: obFein };
+    }
+    const crmUrl = Deno.env.get('CRM_URL');
+    const crmKey = Deno.env.get('CRM_SERVICE_KEY');
+    if (crmUrl && crmKey) {
+      ctx.crm = { url: crmUrl.replace(/\/+$/, ''), key: crmKey };
     }
   } catch (e) {
     return json({ error: (e as Error).message }, 500);

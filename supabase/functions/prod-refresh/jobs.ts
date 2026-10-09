@@ -26,6 +26,9 @@ export interface JobCtx {
   // The onboarding backend is a different system with its own login; see the
   // second half of prodQuery.ts. Absent unless its secrets are set.
   onboarding?: { username: string; password: string; fein: string };
+  // The CRM's own Supabase, written by push_to_crm. Absent unless its
+  // secrets are set.
+  crm?: { url: string; key: string };
   dryRun: boolean;
 }
 
@@ -1037,6 +1040,76 @@ async function systemActivity(ctx: JobCtx): Promise<JobResult> {
   return { job: 'system_activity', ok: true, log, queryIds };
 }
 
+/* ------------------------------------------------- push to the CRM -------- */
+
+// [ours, theirs, columns to strip]. client_overview lands as client_profile:
+// 'overview' is our view's name, 'profile' is what it is to the Client 360
+// page. The stripped columns are identities and keys that are ours, not
+// theirs, and would collide on insert.
+const CRM_DATA_VIEWS: [string, string, string[]][] = [
+  ['api_activity_runs', 'api_activity_runs', ['id']],
+  ['payroll_health', 'payroll_health', []],
+  ['client_data_coverage', 'client_data_coverage', []],
+  ['document_transfer', 'document_transfer', ['id', 'source_message_id']],
+  ['client_document_counts', 'client_document_counts', []],
+  ['client_overview', 'client_profile', []],
+  ['client_system_activity', 'client_system_activity', []],
+  ['client_work_locations', 'client_work_locations', ['id']],
+];
+
+/**
+ * Copy our reporting tables into the CRM's.
+ *
+ * WHY A REFRESH BUTTON NEEDS THIS
+ *   Every other job here writes OUR Supabase, and the CRM reads its OWN. Apps
+ *   Script bridges the two at 17:30. So without this step a "Refresh" button
+ *   on the CRM's Data page would run, succeed, and change nothing the person
+ *   pressing it can see until the evening — which is worse than no button.
+ *
+ * A full replace per table is right here and nowhere else: these are
+ * read-only reporting copies, nothing in the CRM writes to them, and there is
+ * no per-row history on that side to lose. The historical tables are a
+ * different matter — they carry file names and human notes — and are not in
+ * this list.
+ *
+ * Run it LAST. It copies whatever is in our Supabase at that moment.
+ */
+async function pushToCrm(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+  if (!ctx.crm) {
+    throw new Error('CRM_URL / CRM_SERVICE_KEY are not set on this function');
+  }
+  const crm = { dashUrl: ctx.crm.url, dashKey: ctx.crm.key, creds: ctx.creds,
+                dryRun: ctx.dryRun } as JobCtx;
+
+  let copied = 0;
+  for (const [from, to, strip] of CRM_DATA_VIEWS) {
+    const rows = (await dashSelect(ctx, from, 'select=*')).map((r) => {
+      const o = { ...r };
+      for (const c of strip) delete o[c];
+      return o;
+    });
+    if (ctx.dryRun) { log.push(`  ${from} -> ${to}: ${rows.length} row(s)`); continue; }
+    if (!rows.length) {
+      // Replacing a populated CRM table with nothing is never what was meant.
+      log.push(`  ${from} -> ${to}: SKIPPED, our table is empty`);
+      continue;
+    }
+    // Read ours in full first, so a failed read cannot leave the CRM empty.
+    await dash(crm, 'DELETE', `${to}?id=gt.0`);
+    for (let i = 0; i < rows.length; i += 500) {
+      await dash(crm, 'POST', to, rows.slice(i, i + 500));
+    }
+    log.push(`  ${from} -> ${to}: ${rows.length} row(s)`);
+    copied += rows.length;
+  }
+
+  log.push(ctx.dryRun
+    ? 'DRY RUN - nothing written to the CRM.'
+    : `copied ${copied} row(s) into the CRM`);
+  return { job: 'push_to_crm', ok: true, log, queryIds: [] };
+}
+
 /* ------------------------------------------------------------- the registry */
 
 export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
@@ -1049,4 +1122,7 @@ export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
   document_counts: documentCounts,
   system_activity: systemActivity,
   api_activity: apiActivity,
+  // Last: it copies whatever is in our Supabase at that moment, so anything
+  // written after it would not reach the CRM until Apps Script's 17:30 run.
+  push_to_crm: pushToCrm,
 };

@@ -27,6 +27,78 @@ const API_MODULES = [
 
 let dataQ = "";
 
+/* --- Refresh: pull today's numbers from Uzio prod, then reload this page. ---
+   The work happens in the prod-refresh Edge Function, which lives in the DSP
+   Ops Supabase project, not this one. Two jobs run: api_activity reads prod
+   and writes that project, push_to_crm then copies the result here -- without
+   the second one the button would succeed and change nothing on screen until
+   Apps Script's 17:30 push.
+
+   The function takes this page's own session token and resolves it back to a
+   real user, so it refuses anyone who is not signed in to the CRM. Any signed-
+   in user may press it. */
+const PROD_REFRESH_URL =
+  "https://nqiyiherkzlhorsnyeni.supabase.co/functions/v1/prod-refresh";
+
+async function runProdRefresh(jobs, onLine) {
+  // supabase-js keeps the session here; reading it directly avoids depending
+  // on which name the client is exposed under.
+  const k = Object.keys(localStorage)
+    .find((x) => x.startsWith("sb-") && x.endsWith("-auth-token"));
+  const token = k ? (JSON.parse(localStorage[k]) || {}).access_token : null;
+  if (!token) throw new Error("You are signed out — reload and sign in again.");
+
+  const res = await fetch(PROD_REFRESH_URL, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ jobs: jobs }),
+  });
+  const body = await res.json().catch(() => ({}));
+  // 207 means some jobs worked and some did not, so the per-job detail is the
+  // answer, not the status code.
+  if (!res.ok && res.status !== 207) {
+    throw new Error(body.error || ("Refresh failed (HTTP " + res.status + ")"));
+  }
+  (body.jobs || []).forEach((j) => {
+    (j.log || []).forEach((l) => onLine && onLine(j.job + ": " + l));
+  });
+  const failed = (body.jobs || []).filter((j) => !j.ok);
+  if (failed.length) {
+    throw new Error(failed.map((j) => j.job + " — " + (j.log || []).join("; ")).join(" | "));
+  }
+  return body;
+}
+
+/** A refresh button plus its own status line, for one Data tab. */
+function refreshControl(jobs) {
+  const wrap = document.createElement("span");
+  wrap.className = "refresh-control";
+  wrap.innerHTML =
+    '<button type="button" class="btn-refresh">Refresh from Uzio</button>' +
+    '<span class="refresh-status muted"></span>';
+  const btn = wrap.querySelector("button");
+  const status = wrap.querySelector(".refresh-status");
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    // It reads prod and rewrites two projects; ~20s is normal and a silent
+    // button for that long reads as broken.
+    status.textContent = "Reading Uzio… this takes up to a minute.";
+    try {
+      await runProdRefresh(jobs, (l) => console.log("[prod-refresh]", l));
+      status.textContent = "Done. Reloading…";
+      // Re-render from the CRM's now-updated copy.
+      location.reload();
+    } catch (e) {
+      btn.disabled = false;
+      status.textContent = e.message;
+      status.classList.add("refresh-status--error");
+      console.error("[prod-refresh]", e);
+    }
+  };
+  return wrap;
+}
+
 const dpill = (label, cls) => `<span class="pill ${cls}">${esc(label)}</span>`;
 const dpct = (num, den) => den ? Math.round(num / den * 100) : null;
 const dbar = (p) => p === null ? `<span class="muted">—</span>`
@@ -69,6 +141,9 @@ async function apiTab() {
     <select id="api-vendor"><option value="all">All vendors</option>
       <option>ADP</option><option>Paycom</option></select>
     <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="api-gaps"> gaps only</label>`;
+  // api_activity rebuilds this tab's numbers from prod; push_to_crm is what
+  // makes them visible here rather than only in the DSP Ops project.
+  $("#data-extra").appendChild(refreshControl(["api_activity", "push_to_crm"]));
 
   const cell = (r) => {
     if (!r) return `<td><span class="muted">—</span></td>`;

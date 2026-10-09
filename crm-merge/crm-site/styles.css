@@ -122,3 +122,16 @@ details.cgroup table.grid { border: none; border-radius: 0; }
 /* Long notes fold to two lines; click unfolds (clampHtml in views-admin.js). */
 .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .clamp.open { display: inline; -webkit-line-clamp: unset; }
+
+/* Refresh control on the Data tabs. The status line sits beside the button
+   rather than replacing its label, so the button keeps its size and the row
+   does not jump while a refresh runs. */
+.refresh-control { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.btn-refresh {
+  padding: 5px 12px; border: 1px solid var(--line, #d6d9de); border-radius: 6px;
+  background: #fff; cursor: pointer; font: inherit; white-space: nowrap;
+}
+.btn-refresh:hover:not(:disabled) { background: #f4f6f8; }
+.btn-refresh:disabled { opacity: .55; cursor: progress; }
+.refresh-status { font-size: 12px; }
+.refresh-status--error { color: #b3261e; }

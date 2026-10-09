@@ -69,9 +69,29 @@ Deno.serve(async (req: Request) => {
 
   let email = '';
   try {
+    // WHICH PROJECT'S LOGIN COUNTS
+    //   A session token is only valid against the project that issued it, so
+    //   the check has to point at wherever the CRM's users live -- which is
+    //   not necessarily where this function is deployed.
+    //
+    //   The plan was to host this in the CRM project and use the injected
+    //   SUPABASE_* values. That needs membership of the CRM's Supabase org,
+    //   which Shobhit's account does not have ("403: your account does not
+    //   have the necessary privileges", 09 Oct 2026 -- `projects list` returns
+    //   only his own two). Rather than wait on an org invite, CRM_AUTH_URL and
+    //   CRM_ANON_KEY let the function live in our project and still validate
+    //   CRM sessions: auth.getUser is a call to that project's /auth/v1/user,
+    //   and it does not care who is making it.
+    //
+    //   They fall back to the injected values, so moving this into the CRM
+    //   project later means deleting two secrets and nothing else.
+    //
+    //   The anon key is the right key here and is not a secret worth guarding
+    //   -- it is already in the CRM's own frontend. It is also, on its own,
+    //   not enough: see the getUser check below.
     const crm = createClient(
-      requiredEnv('SUPABASE_URL'),        // both injected by the platform
-      requiredEnv('SUPABASE_ANON_KEY'),
+      Deno.env.get('CRM_AUTH_URL') || requiredEnv('SUPABASE_URL'),
+      Deno.env.get('CRM_ANON_KEY') || requiredEnv('SUPABASE_ANON_KEY'),
     );
     const { data, error } = await crm.auth.getUser(token);
     // The check that matters. The anon key satisfies verify_jwt but resolves

@@ -25,18 +25,31 @@ credential, which is what this function is.
 
 | | |
 |---|---|
-| Function runs in | the **CRM** project |
+| Function runs in | **our dashboard** project |
+| Verifies logins against | the **CRM** project, via `CRM_AUTH_URL` / `CRM_ANON_KEY` |
 | Writes into | **our dashboard** project |
 
-The function sits in the CRM project because that is where the login already
-is. A CRM user's session token is issued by that project, so only a function in
-that project can verify it. Putting the function in our project instead would
-mean turning `verify_jwt` off and inventing a shared secret for the CRM frontend
-to hold — a secret in a browser, which is the thing this arrangement avoids.
+The first plan was to host this in the CRM project, because that is where the
+login is. Deploying there needs membership of the CRM's Supabase org, and
+Shobhit's account does not have it — `supabase functions deploy` answers *403:
+your account does not have the necessary privileges*, and `projects list`
+returns only his own two projects (09 Oct 2026).
 
-The cost of that choice, stated plainly: **our `sb_secret_` key lives as a
-secret on a function in the CRM project.** Anyone who administers that project
-can read it.
+It turns out not to matter. A session token is validated by calling the issuing
+project's `/auth/v1/user`, and nothing says the caller has to live there. So the
+function runs in our project and points its auth check at the CRM's with two
+extra secrets. Two things improve as a result:
+
+- our `sb_secret_` key stays in our own project instead of becoming a secret on
+  a function in someone else's
+- nobody has to wait on an org invite
+
+If the CRM org does add us later, delete `CRM_AUTH_URL` and `CRM_ANON_KEY` and
+redeploy there; the code falls back to the injected `SUPABASE_*` values on its
+own.
+
+The CRM frontend then calls this function cross-origin, which the CORS headers
+already allow.
 
 ## Auth: `verify_jwt` alone is not enough
 
@@ -128,24 +141,34 @@ all, which is what it was asked to do.
 
 ## Deploy
 
-Needs the Supabase CLI and access to the CRM project.
+No local install needed — `npx` is enough, and the "Docker is not running"
+warning the CLI prints is not the deploy failing. Run from the repo root, where
+`supabase/functions/` lives.
 
 ```bash
-supabase functions deploy prod-refresh --project-ref <crm-project-ref>
+npx supabase@latest login
+npx supabase@latest functions deploy prod-refresh --project-ref <our-project-ref>
 ```
 
 Then the secrets, which are never committed:
 
 ```bash
-supabase secrets set --project-ref <crm-project-ref> \
+npx supabase@latest secrets set --project-ref <our-project-ref> \
   NEURONOPS_USERNAME=... \
   NEURONOPS_PASSWORD=... \
   ONBOARDING_USERNAME=... \
   ONBOARDING_PASSWORD=... \
   ONBOARDING_FEIN=... \
   DASH_URL=https://<our-project-ref>.supabase.co \
-  DASH_SERVICE_KEY=sb_secret_...
+  DASH_SERVICE_KEY=sb_secret_... \
+  CRM_AUTH_URL=https://<crm-project-ref>.supabase.co \
+  CRM_ANON_KEY=<the CRM's anon/publishable key>
 ```
+
+`CRM_AUTH_URL` and `CRM_ANON_KEY` are what let the function run here and still
+accept CRM logins — see **Where it lives**. The anon key is not a secret worth
+guarding; it is already in the CRM's own frontend, and on its own it does not
+get past the `getUser` check.
 
 The `ONBOARDING_*` three are a separate login for a separate system — the
 values in `_secrets/onboarding-creds.json`, not the NeuronOps ones. Any valid
@@ -165,7 +188,7 @@ earlier.
 
 ```bash
 # dry run first - reads prod, writes nothing
-curl -X POST 'https://<crm-project-ref>.supabase.co/functions/v1/prod-refresh' \
+curl -X POST 'https://<our-project-ref>.supabase.co/functions/v1/prod-refresh' \
   -H "Authorization: Bearer $CRM_USER_SESSION_JWT" \
   -H 'Content-Type: application/json' \
   -d '{"jobs":["work_locations"],"dryRun":true}'
@@ -176,12 +199,16 @@ Drop `dryRun` to write. `jobs` omitted runs everything.
 From the CRM frontend the session token is already to hand:
 
 ```js
+// NOT CONFIG.SUPABASE_URL. The session comes from the CRM's project, the
+// function is deployed in ours, and the call goes to ours.
+const PROD_REFRESH = 'https://<our-project-ref>.supabase.co/functions/v1/prod-refresh'
+
 const { data: { session } } = await supabase.auth.getSession()
-const res = await fetch(`${SUPABASE_URL}/functions/v1/prod-refresh`, {
+const res = await fetch(PROD_REFRESH, {
   method: 'POST',
   headers: { Authorization: `Bearer ${session.access_token}`,
              'Content-Type': 'application/json' },
-  body: JSON.stringify({ jobs: ['work_locations'] }),
+  body: JSON.stringify({ jobs: ['api_activity'] }),
 })
 ```
 

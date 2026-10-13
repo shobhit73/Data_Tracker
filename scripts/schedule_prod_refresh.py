@@ -29,6 +29,9 @@ BATCHES = [
      '"document_counts","system_activity","payroll_health","api_activity"]}'),
     ("prod-refresh-daily-2", "15 11 * * *", '{"jobs":["load_history"]}'),
     ("prod-refresh-daily-3", "22 11 * * *", '{"jobs":["push_to_crm"]}'),
+    # 17:55 IST - after Apps Script's 17:30 run has refreshed the CRM's
+    # hist_clients, so the Historical rule judges today's scan, not yesterday's.
+    ("prod-refresh-daily-4", "25 12 * * *", '{"jobs":["task_evidence"]}'),
 ]
 
 

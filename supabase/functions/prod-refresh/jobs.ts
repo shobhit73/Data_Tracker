@@ -1278,6 +1278,165 @@ async function pushToCrm(ctx: JobCtx): Promise<JobResult> {
   return { job: 'push_to_crm', ok: true, log, queryIds: [] };
 }
 
+/* ------------------------------------------------------------ task_evidence */
+
+/**
+ * Flip CRM onboarding tasks to Done when prod itself proves the work happened.
+ *
+ * The rules below only cover tasks whose completion IS a data fact (an API ran
+ * ok, prod holds the rows). Judgment tasks are deliberately absent — evidence
+ * can say "the data is loaded", never "a human reviewed it": Tax Review,
+ * PTO Balance Move, Prior Pay Info Transfer & Approval (the "& Approval" half
+ * is a sign-off). Audit tasks stay with the audit-sheet sync.
+ *
+ * Guards:
+ *   - only template tasks currently Open / In Progress are considered;
+ *   - a task a human has touched (app_touched) is never flipped — it gets ONE
+ *     "[task_evidence]" note so the evidence is visible and the human decides;
+ *   - every flip carries a note naming its evidence, and lands in the
+ *     activity log as "sync" via the existing triggers;
+ *   - more than 60 planned flips aborts the run: that is a broken rule, not a
+ *     productive afternoon.
+ */
+async function taskEvidence(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+  if (!ctx.crm) {
+    throw new Error('CRM_URL / CRM_SERVICE_KEY are not set on this function');
+  }
+  const crm = { dashUrl: ctx.crm.url, dashKey: ctx.crm.key, creds: ctx.creds,
+                dryRun: ctx.dryRun } as JobCtx;
+
+  // Evidence, from our project...
+  const [cov, sys, api, docT, docC, overview] = await Promise.all([
+    dashSelect(ctx, 'client_data_coverage',
+      'select=dsp_short_code,fein,active_employees,total_employees,active_with_payment_method'),
+    dashSelect(ctx, 'client_system_activity',
+      'select=dsp_short_code,tt_setup_completed,tt_employees_punched'),
+    dashSelect(ctx, 'api_activity_runs',
+      'select=fein,module_key,run_status,last_ok_date,last_ok_success,last_ok_total'),
+    dashSelect(ctx, 'document_transfer', 'select=client_name,status,transfer_date,total_docs'),
+    dashSelect(ctx, 'client_document_counts', 'select=dsp_short_code,documents,employees_with_docs'),
+    dashSelect(ctx, 'client_overview', 'select=dsp_short_code,fein'),
+  ]);
+  // ...and the state of play in the CRM.
+  const [clients, tasks, hist] = await Promise.all([
+    dashSelect(crm, 'clients', 'select=id,dsp_name,short_code'),
+    dashSelect(crm, 'tasks', 'select=id,client_id,title,status,app_touched&template_id=not.is.null'),
+    dashSelect(crm, 'hist_clients', 'select=dsp_short_code,received,pending'),
+  ]);
+
+  const byCode = <T extends Record<string, unknown>>(rows: T[], key = 'dsp_short_code') => {
+    const m = new Map<string, T>();
+    rows.forEach((r) => { const k = r[key] as string; if (k) m.set(k, r); });
+    return m;
+  };
+  const covBy = byCode(cov), sysBy = byCode(sys), histBy = byCode(hist), docCBy = byCode(docC);
+  const feinBy = byCode(overview);
+  const apiBy = new Map<string, Record<string, Record<string, unknown>>>();
+  api.forEach((r) => {
+    const f = r.fein as string;
+    if (!apiBy.has(f)) apiBy.set(f, {});
+    apiBy.get(f)![r.module_key as string] = r;
+  });
+  const norm = (t: unknown) => String(t ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const docTBy = new Map<string, Record<string, unknown>>();
+  docT.forEach((r) => {
+    if (r.status === 'Complete') docTBy.set(norm(r.client_name), r);
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  // What proves each template task, keyed by normalized title.
+  const evidenceFor = (code: string, name: string): Record<string, string | null> => {
+    const c = covBy.get(code), s = sysBy.get(code), h = histBy.get(code), d = docCBy.get(code);
+    const fein = (feinBy.get(code)?.fein as string) || (c?.fein as string) || '';
+    const A = apiBy.get(fein) ?? {};
+    const ok = (m: string) => A[m] && A[m].run_status === 'ok' ? A[m] : null;
+    const apiNote = (m: string, label: string) => {
+      const r = ok(m);
+      return r ? `${label} API ok ${r.last_ok_date} (${r.last_ok_success}/${r.last_ok_total})` : null;
+    };
+    const payPct = c && (c.active_employees as number) > 0
+      ? Math.round((c.active_with_payment_method as number) / (c.active_employees as number) * 100) : null;
+    const tr = docTBy.get(norm(name));
+    const fed = apiNote('FedTaxWithholding', 'Fed tax'), st = apiNote('StateTaxWithholding', 'State tax');
+    return {
+      [norm('Company Setup')]: c ? `employer is live in prod (${c.total_employees} employees on record)` : null,
+      [norm('Census Transfer')]: apiNote('EmployeeCensus', 'Census')
+        ?? (c && (c.total_employees as number) >= 20
+            ? `prod holds ${c.total_employees} employees (loaded outside the Census API)` : null),
+      [norm('Time Tracking Setup (Kiosk/Mobile/Web)')]: s && s.tt_setup_completed
+        ? `TT setup completed in prod${s.tt_employees_punched ? `; ${s.tt_employees_punched} employees have punched` : ''}` : null,
+      [norm('Payment Method Transfer')]: apiNote('PaymentMethodSetup', 'Payment method')
+        ?? (payPct !== null && payPct >= 90 ? `${payPct}% of active employees hold a payment method in prod` : null),
+      [norm('Federal/State Withholding')]: fed && st ? `${fed}; ${st}` : null,
+      [norm("Worker's Compensation")]: apiNote('WorkerCompensation', 'Worker comp'),
+      [norm('Historical Data Download')]: h && (h.pending as number) === 0 && (h.received as number) > 0
+        ? `historical tracker complete: ${h.received}/${h.received} reports received` : null,
+      [norm('Document Transfer')]: tr
+        ? `document transfer complete ${tr.transfer_date} (${tr.total_docs ?? '?'} docs)`
+        : (d && (d.documents as number) >= 100
+           ? `${d.documents} documents in prod across ${d.employees_with_docs} employees` : null),
+    };
+  };
+
+  type Plan = { task: Record<string, unknown>; client: Record<string, unknown>; note: string; nudge: boolean };
+  const plans: Plan[] = [];
+  const clientById = new Map(clients.map((c) => [c.id, c]));
+  for (const t of tasks) {
+    if (t.status !== 'Open' && t.status !== 'In Progress') continue;
+    const cl = clientById.get(t.client_id);
+    if (!cl || !cl.short_code) continue;
+    const ev = evidenceFor(cl.short_code as string, cl.dsp_name as string)[norm(t.title)];
+    if (!ev) continue;
+    plans.push({ task: t, client: cl, note: ev, nudge: t.app_touched === true });
+  }
+
+  const flips = plans.filter((p) => !p.nudge);
+  if (flips.length > 60) {
+    log.push(`REFUSING: ${flips.length} planned flips is above the sanity cap of 60 - a rule is likely wrong.`);
+    flips.slice(0, 15).forEach((p) =>
+      log.push(`  would flip ${p.client.short_code} "${p.task.title}" (${p.note})`));
+    return { job: 'task_evidence', ok: false, log, queryIds: [] };
+  }
+
+  // One "[task_evidence]" note per touched task, ever - look up what exists.
+  const nudges = plans.filter((p) => p.nudge);
+  let alreadyNudged = new Set<unknown>();
+  if (nudges.length) {
+    const ids = nudges.map((p) => p.task.id).join(',');
+    const notes = await dashSelect(crm, 'task_notes', `select=task_id,note&task_id=in.(${ids})`);
+    alreadyNudged = new Set(notes.filter((n) => String(n.note).includes('[task_evidence]'))
+                                 .map((n) => n.task_id));
+  }
+
+  let flipped = 0, nudged = 0;
+  for (const p of plans) {
+    const label = `${p.client.short_code} "${p.task.title}"`;
+    if (p.nudge) {
+      if (alreadyNudged.has(p.task.id)) continue;
+      log.push(`  note only (human-touched): ${label} - ${p.note}`);
+      if (!ctx.dryRun) {
+        await dash(crm, 'POST', 'task_notes', [{ task_id: p.task.id,
+          note: `[task_evidence] Evidence says this is done: ${p.note}. Left as-is because a human last touched it.` }]);
+      }
+      nudged++;
+      continue;
+    }
+    log.push(`  flip -> Done: ${label} - ${p.note}`);
+    if (!ctx.dryRun) {
+      await dash(crm, 'PATCH', `tasks?id=eq.${p.task.id}`, { status: 'Done', done_date: today });
+      await dash(crm, 'POST', 'task_notes', [{ task_id: p.task.id,
+        note: `[task_evidence] ${p.note} - auto-verified from Uzio prod` }]);
+    }
+    flipped++;
+  }
+
+  log.push(ctx.dryRun
+    ? `DRY RUN - would flip ${flipped} task(s), nudge ${nudged}.`
+    : `flipped ${flipped} task(s) to Done, nudged ${nudged} human-touched task(s).`);
+  return { job: 'task_evidence', ok: true, log, queryIds: [] };
+}
+
 /* ------------------------------------------------------------- the registry */
 
 export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
@@ -1294,4 +1453,7 @@ export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
   // Last: it copies whatever is in our Supabase at that moment, so anything
   // written after it would not reach the CRM until Apps Script's 17:30 run.
   push_to_crm: pushToCrm,
+  // After push_to_crm (it reads the CRM's hist_clients, which Apps Script
+  // refreshes at 17:30 - its own cron slot runs later still).
+  task_evidence: taskEvidence,
 };

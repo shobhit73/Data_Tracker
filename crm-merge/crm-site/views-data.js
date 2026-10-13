@@ -123,6 +123,8 @@ const REFRESH_EVERYTHING = [
    "document_counts", "system_activity", "payroll_health", "api_activity"],
   ["load_history"],
   ["push_to_crm"],
+  // Evidence-based task flips, after the fresh copy has landed here.
+  ["task_evidence"],
 ];
 
 

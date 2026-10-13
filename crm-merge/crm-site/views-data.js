@@ -148,7 +148,7 @@ function pagerHtml(key, p, pages, total) {
   if (pages <= 1) return "";
   return `<div class="filter-bar" style="margin:10px 0 0;justify-content:flex-end">
     <button type="button" class="small secondary" data-pg="${key}:prev" ${p === 0 ? "disabled" : ""}>‹ Prev</button>
-    <span class="muted">page ${p + 1} of ${pages} · ${total} rows</span>
+    <span class="muted">page ${p + 1} of ${pages} · ${total} total</span>
     <button type="button" class="small secondary" data-pg="${key}:next" ${p >= pages - 1 ? "disabled" : ""}>Next ›</button>
   </div>`;
 }

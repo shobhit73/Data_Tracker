@@ -79,7 +79,16 @@ Deno.serve(async (req: Request) => {
   if (!token) return json({ error: 'missing Authorization header' }, 401);
 
   let email = '';
-  try {
+  // The daily schedule. pg_cron has no user session to present, so it calls
+  // with a dedicated secret (CRON_SECRET, set like the other secrets). The
+  // path only exists while that secret is configured, and the comparison is
+  // full-value - a prefix or an empty header cannot slip through. Everything
+  // below the auth check treats this caller like any other, and the run is
+  // attributed to "cron@daily-schedule" in the same log fields a human gets.
+  const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+  if (cronSecret && token.length === cronSecret.length && token === cronSecret) {
+    email = 'cron@daily-schedule';
+  } else try {
     // WHICH PROJECT'S LOGIN COUNTS
     //   A session token is only valid against the project that issued it, so
     //   the check has to point at wherever the CRM's users live -- which is

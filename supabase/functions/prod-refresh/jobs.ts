@@ -30,6 +30,10 @@ export interface JobCtx {
   // secrets are set.
   crm?: { url: string; key: string };
   dryRun: boolean;
+  // task_evidence's flip cap for THIS call only (body.taskEvidenceCap). The
+  // default 60 suits the daily steady state; the first run has months of
+  // backlog and legitimately needs more.
+  taskEvidenceCap?: number;
 }
 
 export interface JobResult {
@@ -1392,8 +1396,9 @@ async function taskEvidence(ctx: JobCtx): Promise<JobResult> {
   }
 
   const flips = plans.filter((p) => !p.nudge);
-  if (flips.length > 60) {
-    log.push(`REFUSING: ${flips.length} planned flips is above the sanity cap of 60 - a rule is likely wrong.`);
+  const cap = ctx.taskEvidenceCap ?? 60;
+  if (flips.length > cap) {
+    log.push(`REFUSING: ${flips.length} planned flips is above the sanity cap of ${cap} - a rule is likely wrong.`);
     flips.slice(0, 15).forEach((p) =>
       log.push(`  would flip ${p.client.short_code} "${p.task.title}" (${p.note})`));
     return { job: 'task_evidence', ok: false, log, queryIds: [] };

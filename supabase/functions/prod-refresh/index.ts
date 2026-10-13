@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- what to run --------------------------------------------------------
-  let body: { jobs?: string[]; dryRun?: boolean } = {};
+  let body: { jobs?: string[]; dryRun?: boolean; taskEvidenceCap?: number } = {};
   try {
     const text = await req.text();
     if (text.trim()) body = JSON.parse(text);
@@ -150,6 +150,7 @@ Deno.serve(async (req: Request) => {
         password: requiredEnv('NEURONOPS_PASSWORD'),
       },
       dryRun: body.dryRun === true,
+      taskEvidenceCap: typeof body.taskEvidenceCap === 'number' ? body.taskEvidenceCap : undefined,
     };
     // Optional, so the NeuronOps jobs still run on a function that has not
     // been given onboarding credentials. api_activity says so itself rather

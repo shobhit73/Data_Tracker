@@ -1,0 +1,2353 @@
+[
+    {
+        "dsp_short_code":  "KVLO",
+        "dsp_name":  "KV3 Logistics LLC",
+        "cuzio_slug":  "kv3-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly, 1-50 tier"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Broker TBD within 60-day window"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Mississippi requires E-Verify"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Full-service"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "On hold 60 days post-launch pending benefits-broker decision"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Decisely activates once KV3 reaches 15 employees"
+                        }
+                    ],
+        "notes":  "QuickBooks Online (no added cost) and Amazon Cortex integrations.",
+        "source":  "wiki/customers/kv3-logistics/overview.md",
+        "contract_signed_date":  "2026-08-03"
+    },
+    {
+        "dsp_short_code":  "KMLG",
+        "dsp_name":  "KARMA LOGISTICS LLC",
+        "cuzio_slug":  "karma-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "UZIO scheduling module in use"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "180/360 API, $480/yr; no vendor selected yet"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Still shopping"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "E-COMP quote requested for the new PA DSP"
+                        }
+                    ],
+        "notes":  "New DSP; separate NON-DSP company intake pending.",
+        "source":  "wiki/customers/karma-logistics/overview.md",
+        "contract_signed_date":  "2026-09-10"
+    },
+    {
+        "dsp_short_code":  "EPSI",
+        "dsp_name":  "Express Package System Inc",
+        "cuzio_slug":  "express-package-system",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly, ~195 employees"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Scheduling, geofencing, kiosk/mobile"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest to Vestwell (pooled plan, 360 integration)"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "~20, UZIO-managed"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "E-Verify on new standalone account via MOU"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Moving off Innovative; broker intro with JS Gagnon"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "na",
+                            "note":  "Managed externally by client, not configured in UZIO"
+                        },
+                        {
+                            "name":  "ATS",
+                            "status":  "tbd",
+                            "note":  "Interest in open beta only"
+                        }
+                    ],
+        "notes":  "Free QuickBooks Online GL integration; custom polygon geofencing and kiosk/mobile time tracking.",
+        "source":  "wiki/customers/express-package-system/overview.md",
+        "contract_signed_date":  "2026-08-03"
+    },
+    {
+        "dsp_short_code":  "BDGT",
+        "dsp_name":  "Banda Logistics LLC",
+        "cuzio_slug":  "banda-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Decisely"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        }
+                    ],
+        "notes":  "Re-sign after earlier lapse; third-party National Pay direct deposit.",
+        "source":  "wiki/customers/banda-logistics/overview.md",
+        "contract_signed_date":  "2026-08-20"
+    },
+    {
+        "dsp_short_code":  "SGRT",
+        "dsp_name":  "Single Route Logistics",
+        "cuzio_slug":  "single-route-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Changed from biweekly to weekly"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Cortex scheduling integration"
+                        },
+                        {
+                            "name":  "E-Verify",
+                            "status":  "tbd",
+                            "note":  "Whether mandatory in PA not confirmed"
+                        }
+                    ],
+        "notes":  "",
+        "source":  "wiki/customers/single-route-logistics/overview.md",
+        "contract_signed_date":  "2026-08-13"
+    },
+    {
+        "dsp_short_code":  "LYNP",
+        "dsp_name":  "LynxPath Logistics",
+        "cuzio_slug":  "lynxpath-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included"
+                        }
+                    ],
+        "notes":  "Customer signature not visible in corpus though handoff treats deal as signed; customer keeps Sling for scheduling.",
+        "source":  "wiki/customers/lynxpath-logistics/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "LGTA",
+        "dsp_name":  "Long Tail Logistics LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "CEHR",
+        "dsp_name":  "Cehris Logistics LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "HDLG",
+        "dsp_name":  "High Distinction Logistics LLC",
+        "cuzio_slug":  "high-distinction-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Kiosk"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included",
+                            "note":  "UZIO handles Q3+Q4 taxes"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Decisely integration complete 8/4"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Finalization still open"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "tbd",
+                            "note":  "Evaluating native I-9 flow to replace Smart Recruiters"
+                        }
+                    ],
+        "notes":  "Cortex integration.",
+        "source":  "wiki/customers/high-distinction-logistics/overview.md",
+        "contract_signed_date":  "2026-06-04"
+    },
+    {
+        "dsp_short_code":  "APXR",
+        "dsp_name":  "APEX Drive Logistics LLC",
+        "cuzio_slug":  "apex-drive-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Mobile and kiosk with geofencing"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Per quote"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "360 integration per quote; provider (Vestwell/Human Interest) open"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Per quote"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "Provider TBD"
+                        }
+                    ],
+        "notes":  "Modules taken from the same-day signed quote; order-form add-on menu not treated as selection.",
+        "source":  "wiki/customers/apex-drive-logistics/overview.md",
+        "contract_signed_date":  "2026-10-05"
+    },
+    {
+        "dsp_short_code":  "HRLG",
+        "dsp_name":  "Horizon Logistics LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "RICM",
+        "dsp_name":  "Rich Management Logistics",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "PRLI",
+        "dsp_name":  "Precision Express Delivery",
+        "cuzio_slug":  "precision-express-delivery",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Decisely"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest integration"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "New ask: Alloy"
+                        },
+                        {
+                            "name":  "EWA",
+                            "status":  "na",
+                            "note":  "Declined"
+                        }
+                    ],
+        "notes":  "WOTC confirmed; open unscoped ask for Voice ERP (VICKI) integration; no tracker row yet.",
+        "source":  "wiki/customers/precision-express-delivery/overview.md",
+        "contract_signed_date":  "2026-09-25"
+    },
+    {
+        "dsp_short_code":  "SATV",
+        "dsp_name":  "SATTVA SERVICES LLC",
+        "cuzio_slug":  "sattva-services",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "I-9 included; E-Verify opted out (PA voluntary)"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "tbd",
+                            "note":  "Optional add-on $150/payroll"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Evaluating ADP vs Human Interest"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Decisely per tracker"
+                        }
+                    ],
+        "notes":  "QuickBooks and Cortex/Flex integrations; implementation fee waived.",
+        "source":  "wiki/customers/sattva-services/overview.md",
+        "contract_signed_date":  "2026-10-01"
+    },
+    {
+        "dsp_short_code":  "RJGL",
+        "dsp_name":  "RJG Logistics LLC",
+        "cuzio_slug":  "rjg-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "E-Verify $1/form"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Only when client adds"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Only when client adds"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "Only when client adds"
+                        }
+                    ],
+        "notes":  "Order form line items for 401(k)/Benefits/ACA exist but notes say activate only when client adds them.",
+        "source":  "wiki/customers/rjg-logistics/overview.md",
+        "contract_signed_date":  "2026-09-08"
+    },
+    {
+        "dsp_short_code":  "DIIL",
+        "dsp_name":  "Development Innovation International, LLC",
+        "cuzio_slug":  "development-innovation-international",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "One-way/bidirectional add-on"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "I-9 included; E-Verify not mandated in MD"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Broker intro offered"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "Pending item raised by customer"
+                        }
+                    ],
+        "notes":  "Cortex one-way sync and polygon geofencing interest; QuickBooks field matching included free.",
+        "source":  "wiki/customers/development-innovation-international/overview.md",
+        "contract_signed_date":  "2026-06-18"
+    },
+    {
+        "dsp_short_code":  "AMGL",
+        "dsp_name":  "Always More Logistics",
+        "cuzio_slug":  "always-more-logistics",
+        "modules":  [
+
+                    ],
+        "notes":  "No module scope on record in Cuzio",
+        "source":  "wiki/customers/always-more-logistics/overview.md",
+        "contract_signed_date":  "2025-10-29"
+    },
+    {
+        "dsp_short_code":  "YEXP",
+        "dsp_name":  "Your Express Solutions",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "ANC1",
+        "dsp_name":  "Anchor Core LLC",
+        "cuzio_slug":  "anchor-core",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Negotiated $1.00 per form"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Deferred by owner until business grows"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "Deferred by owner"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Benefits broker deferred by owner"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "na"
+                        }
+                    ],
+        "notes":  "Pin-based kiosk plus mobile; QuickBooks and Amazon Cortex integrations; implementation fee waived.",
+        "source":  "wiki/customers/anchor-core/overview.md",
+        "contract_signed_date":  "2026-10-05"
+    },
+    {
+        "dsp_short_code":  "INLV",
+        "dsp_name":  "InnovDel Inc",
+        "cuzio_slug":  "innovdel",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        }
+                    ],
+        "notes":  "100+ employee weekly-payroll plan; fee waived for referrals.",
+        "source":  "wiki/customers/innovdel/overview.md",
+        "contract_signed_date":  "2026-07-06"
+    },
+    {
+        "dsp_short_code":  "LELL",
+        "dsp_name":  "Legacy Line Logistics LLC",
+        "cuzio_slug":  "legacy-line-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "180/360, $480/yr; provider evaluation ongoing"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "$78/yr"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Native I-9; E-Verify voluntary in MD at extra cost"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "Provider to be introduced"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Decisely ICHRA plan; broker intro made"
+                        }
+                    ],
+        "notes":  "Needs on-site preprinted check stock; PTO must auto-drain on termination.",
+        "source":  "wiki/customers/legacy-line-logistics/overview.md",
+        "contract_signed_date":  "2026-09-05"
+    },
+    {
+        "dsp_short_code":  "SPNL",
+        "dsp_name":  "Spring Logistics LLC",
+        "cuzio_slug":  "spring-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Mobile with geofencing, Cortex shift sync"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included",
+                            "note":  "Self-onboarding, I-9"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Requirements defined at kickoff"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Requirements defined at kickoff"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Decisely decision pending"
+                        }
+                    ],
+        "notes":  "New venture; no incumbent system.",
+        "source":  "wiki/customers/spring-logistics/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "OKLL",
+        "dsp_name":  "Oak Link, LLC",
+        "cuzio_slug":  "oak-link",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "180/360, $480/yr"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "$78/yr"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "$1/form"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Providers undecided"
+                        }
+                    ],
+        "notes":  "Wants QuickBooks Online linkage via CPA.",
+        "source":  "wiki/customers/oak-link/overview.md",
+        "contract_signed_date":  "2026-09-10"
+    },
+    {
+        "dsp_short_code":  "ICDL",
+        "dsp_name":  "Iron Clad Delivery",
+        "cuzio_slug":  "iron-clad-delivery",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Alabama requirement"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Quote lists 8"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Decisely two-way integration; enrollee count TBD"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Not now"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "na"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "na"
+                        },
+                        {
+                            "name":  "WOTC",
+                            "status":  "tbd"
+                        }
+                    ],
+        "notes":  "Executed order form not in corpus; scope from handoff note; QuickBooks Online mapping from ADP.",
+        "source":  "wiki/customers/iron-clad-delivery/overview.md",
+        "contract_signed_date":  "2026-09-28"
+    },
+    {
+        "dsp_short_code":  "TREC",
+        "dsp_name":  "Tree City Transport LLC",
+        "cuzio_slug":  "tree-city-transport",
+        "modules":  [
+
+                    ],
+        "notes":  "No module scope on record in Cuzio",
+        "source":  "wiki/customers/tree-city-transport/overview.md",
+        "contract_signed_date":  "2026-02-15"
+    },
+    {
+        "dsp_short_code":  null,
+        "dsp_name":  "KHART Logistics, inc",
+        "cuzio_slug":  "khart-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Integration; ADP stays recordkeeper"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "na",
+                            "note":  "Handled by Decisely broker"
+                        },
+                        {
+                            "name":  "E-Verify",
+                            "status":  "na",
+                            "note":  "Paper I-9s in house, no E-Verify"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "TBD"
+                        }
+                    ],
+        "notes":  "Retains ADP as 401(k) provider for now; go-live moved to January 2027 then possibly Nov 6.",
+        "source":  "wiki/customers/khart-logistics/overview.md",
+        "contract_signed_date":  "2026-09-03"
+    },
+    {
+        "dsp_short_code":  "CDCL",
+        "dsp_name":  "CDC LOGISTICS, LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "CLEA",
+        "dsp_name":  "Clear Logistics LLC",
+        "cuzio_slug":  "clear-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Negotiated $1.00/form, ~300 forms/yr"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Listed among operating preferences"
+                        }
+                    ],
+        "notes":  "High turnover (300-400 hires/yr); digital-only W-2 and check printing preferences on operating profile.",
+        "source":  "wiki/customers/clear-logistics/overview.md",
+        "contract_signed_date":  "2026-09-26"
+    },
+    {
+        "dsp_short_code":  "DLD1",
+        "dsp_name":  "MJ Logistics LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "LDLI",
+        "dsp_name":  "Lightning Delivery Logistics LLC",
+        "cuzio_slug":  "lightning-delivery-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "$480/yr; provider TBD, setup deferrable"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Negotiated $2.00/form"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Optional pay-per-use $78/yr"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "na",
+                            "note":  "Handled outside UZIO"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "Deferred a few months"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Broker decision deferred; Decisely integration in progress"
+                        }
+                    ],
+        "notes":  "Cortex integration was the decisive differentiator; E-Verify activation was missed until an Amazon TRC audit.",
+        "source":  "wiki/customers/lightning-delivery-logistics/overview.md",
+        "contract_signed_date":  "2026-07-30"
+    },
+    {
+        "dsp_short_code":  "ANEM",
+        "dsp_name":  "Anthem Logistics LLC",
+        "cuzio_slug":  "anthem-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Changed weekly to biweekly 8/27"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Add-on confirmed for setup"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Add-on confirmed for setup"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "I-9 handled by UZIO; E-Verify not required in NM"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Provider not finalized; Thomas Financial intro"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "Rate/codes via Marsh outstanding"
+                        }
+                    ],
+        "notes":  "Cortex-to-UZIO schedule sync escalation open as of 9/7.",
+        "source":  "wiki/customers/anthem-logistics/overview.md",
+        "contract_signed_date":  "2026-08-06"
+    },
+    {
+        "dsp_short_code":  "TJIL",
+        "dsp_name":  "TJIII, LLC",
+        "cuzio_slug":  "tjiii",
+        "modules":  [
+                        {
+                            "name":  "401(k)",
+                            "status":  "na",
+                            "note":  "AE notes: no 401(k)"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "na",
+                            "note":  "AE notes: no ACA with UZIO"
+                        },
+                        {
+                            "name":  "E-Verify",
+                            "status":  "tbd",
+                            "note":  "Order form may need change"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "tbd",
+                            "note":  "1 garnishment noted"
+                        }
+                    ],
+        "notes":  "Reactivated 9/25; Paycom incumbent; implementation flagged the order form may need changes for 401(k) and E-Verify.",
+        "source":  "wiki/customers/tjiii/overview.md",
+        "contract_signed_date":  "2025-11-05"
+    },
+    {
+        "dsp_short_code":  "FRFT",
+        "dsp_name":  "Freedom Fleet LLC",
+        "cuzio_slug":  "freedom-fleet",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Scheduling and Cortex integration"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Authorized at kickoff"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "na",
+                            "note":  "None, new entity"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Provider intro in progress"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Broker intro in progress"
+                        }
+                    ],
+        "notes":  "CANCELLED 2026-07-29 before any payroll ran.",
+        "source":  "wiki/customers/freedom-fleet/overview.md",
+        "contract_signed_date":  "2026-06-27"
+    },
+    {
+        "dsp_short_code":  "FDFL",
+        "dsp_name":  "Front Door Freight LLC DSP",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "DCM6",
+        "dsp_name":  "Minecrafters",
+        "cuzio_slug":  "minecrafters",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "ADP, two-way integration required"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "Via broker"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Aetna; enrollee count TBD"
+                        },
+                        {
+                            "name":  "EWA",
+                            "status":  "tbd",
+                            "note":  "TapCheck wanted, not contracted"
+                        }
+                    ],
+        "notes":  "Order form PDF blank; signed per DocuSeal billing notice. Go-live January 2027.",
+        "source":  "wiki/customers/minecrafters/overview.md",
+        "contract_signed_date":  "2026-09-25"
+    },
+    {
+        "dsp_short_code":  "STAV",
+        "dsp_name":  "Stave Delivery",
+        "cuzio_slug":  "stave-delivery",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Mobile with strict geofencing"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest, 360 integration"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "included",
+                            "note":  "UZIO service"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Full management, ~30 active"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "I-9 without E-Verify"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "na",
+                            "note":  "Broker keeps Employee Navigator; UZIO handles ACA only"
+                        }
+                    ],
+        "notes":  "QuickBooks Online push, Cortex open beta, strict geofencing.",
+        "source":  "wiki/customers/stave-delivery/overview.md",
+        "contract_signed_date":  "2026-07-21"
+    },
+    {
+        "dsp_short_code":  "FILI",
+        "dsp_name":  "First Line Logistics",
+        "cuzio_slug":  "first-line-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Integration to start after implementation"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Submission failure ISS-0011 open"
+                        },
+                        {
+                            "name":  "Check Printing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "EWA",
+                            "status":  "included",
+                            "note":  "ZayZoon"
+                        }
+                    ],
+        "notes":  "Elected UZIO check printing and ZayZoon EWA on 8/14.",
+        "source":  "wiki/customers/first-line-logistics/overview.md",
+        "contract_signed_date":  "2026-07-23"
+    },
+    {
+        "dsp_short_code":  "ALP2",
+        "dsp_name":  "Alpine Deliveries LLC",
+        "cuzio_slug":  "alpine-deliveries",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "$1.00/form"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Switching to Vestwell; still shopping"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Shopping for broker; Decisely mentioned"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "Via Insure/RPM"
+                        }
+                    ],
+        "notes":  "On-site check printing; QuickBooks Online and Cortex extension integrations; API access for own portal.",
+        "source":  "wiki/customers/alpine-deliveries/overview.md",
+        "contract_signed_date":  "2026-07-27"
+    },
+    {
+        "dsp_short_code":  "MNRC",
+        "dsp_name":  "Monarch Mile Logistics LLC",
+        "cuzio_slug":  "monarch-mile-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Mobile with geofencing"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "UZIO to manage"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "E-Verify added with 50% discount"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Decisely"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "After broker chosen, 2-3 months out"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "E-COMP Now referral"
+                        }
+                    ],
+        "notes":  "CANCELLED by customer 2026-08-12 (chose ADP); save attempt outcome unknown.",
+        "source":  "wiki/customers/monarch-mile-logistics/overview.md",
+        "contract_signed_date":  "2026-08-03"
+    },
+    {
+        "dsp_short_code":  "GMCH",
+        "dsp_name":  "Gamma Chain Inc",
+        "cuzio_slug":  "gamma-chain",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly, 51-100 tier"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "180/360 integration"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Negotiated $1.00/form"
+                        }
+                    ],
+        "notes":  "Retains ADP as 401(k) recordkeeper for now; implementation fee waived.",
+        "source":  "wiki/customers/gamma-chain/overview.md",
+        "contract_signed_date":  "2026-09-18"
+    },
+    {
+        "dsp_short_code":  "MVAX",
+        "dsp_name":  "MoveAxis Services LLC",
+        "cuzio_slug":  "moveaxis-services",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR Compliance",
+                            "status":  "included",
+                            "note":  "Middle tier ~$30/month, signed 8/28"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Setup in kickoff timeline"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Exploring via Thomas Financial"
+                        }
+                    ],
+        "notes":  "Customer later also signed an HR Compliance (embedded Mineral) module upsell.",
+        "source":  "wiki/customers/moveaxis-services/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "ELLG",
+        "dsp_name":  "Elevate Logistics LLC",
+        "cuzio_slug":  "elevate-logistical-solutions",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Scheduling via Cortex sync"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Opted in, voluntary in WI"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "na",
+                            "note":  "Opted out for now"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Ben Admin on hold until talking with broker"
+                        }
+                    ],
+        "notes":  "Executed PDF still lists stale full add-on set; handoff says follow 401(k)+E-Verify only. Headcount 15 vs 40 unreconciled.",
+        "source":  "wiki/customers/elevate-logistical-solutions/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "WLGL",
+        "dsp_name":  "Ware Logistics, LLC",
+        "cuzio_slug":  "ware-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included",
+                            "note":  "Includes Form I-9 review"
+                        }
+                    ],
+        "notes":  "Customer keeps own external scheduling; UZIO time clock for check-ins only.",
+        "source":  "wiki/customers/ware-logistics/overview.md",
+        "contract_signed_date":  "2026-08-14"
+    },
+    {
+        "dsp_short_code":  "THRV",
+        "dsp_name":  "Thrive Logistics Group LLC",
+        "cuzio_slug":  "thrive-logistics-group",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "$1.50/employee/payroll"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "tbd",
+                            "note":  "I-9 included; E-Verify requested as optional add-on at $1/form"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Benefits broker TBD"
+                        },
+                        {
+                            "name":  "WOTC",
+                            "status":  "tbd"
+                        }
+                    ],
+        "notes":  "Strict geofencing; multi-rate job codes; no tracker row yet.",
+        "source":  "wiki/customers/thrive-logistics-group/overview.md",
+        "contract_signed_date":  "2026-09-24"
+    },
+    {
+        "dsp_short_code":  "WEE1",
+        "dsp_name":  "Veterans Delivery Workforce and Logistics LLC (VDW Logistics)",
+        "cuzio_slug":  "vdw-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Scheduling via UZIO"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "4-5 active orders"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "na",
+                            "note":  "Ease; not exploring UZIO integration"
+                        }
+                    ],
+        "notes":  "Separate unmaterialized daycare business flagged; WEE1 is a station code.",
+        "source":  "wiki/customers/vdw-logistics/overview.md",
+        "contract_signed_date":  "2026-09-25"
+    },
+    {
+        "dsp_short_code":  "SXPR",
+        "dsp_name":  "Sena Express Logistics Corp",
+        "cuzio_slug":  "sena-express-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Not billed until plan launches"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Standard I-9 only; no E-Verify"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Innovative BPS once shopping wraps"
+                        }
+                    ],
+        "notes":  "Setup duplicated from Amazing Logistics; implementation fee waived.",
+        "source":  "wiki/customers/sena-express-logistics/overview.md",
+        "contract_signed_date":  "2026-07-20"
+    },
+    {
+        "dsp_short_code":  "MAMB",
+        "dsp_name":  "Mamba Logistics Inc.",
+        "cuzio_slug":  "mamba-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Cortex/time tracking pitch"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "Quote lists 7"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest, 360 integration"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Decisely"
+                        }
+                    ],
+        "notes":  "Executed order form blank; scope from quote and handoff. Benefits vendor is Decisely not Precisely.",
+        "source":  "wiki/customers/mamba-logistics/overview.md",
+        "contract_signed_date":  "2026-09-27"
+    },
+    {
+        "dsp_short_code":  "FOWE",
+        "dsp_name":  "Freight on Wheels Express",
+        "cuzio_slug":  "freight-on-wheels-express",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "E-Verify",
+                            "status":  "included",
+                            "note":  "$1/form per covering email, unverified on executed form"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "na",
+                            "note":  "Via Reliability Management (external)"
+                        }
+                    ],
+        "notes":  "Pricing on executed form unverified; incumbent unclear (Paycom or ADP).",
+        "source":  "wiki/customers/freight-on-wheels-express/overview.md",
+        "contract_signed_date":  "2026-10-03"
+    },
+    {
+        "dsp_short_code":  "EOPS",
+        "dsp_name":  "Elite Operations Solutions LLC",
+        "cuzio_slug":  "elite-operations-solutions",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "None yet; Decisely intake unsigned"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "na"
+                        },
+                        {
+                            "name":  "E-Verify",
+                            "status":  "na",
+                            "note":  "MT does not mandate"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "na"
+                        },
+                        {
+                            "name":  "EWA",
+                            "status":  "na"
+                        }
+                    ],
+        "notes":  "Lean footprint at kickoff; scheduling deferred.",
+        "source":  "wiki/customers/elite-operations-solutions/overview.md",
+        "contract_signed_date":  "2026-06-24"
+    },
+    {
+        "dsp_short_code":  "KYNE",
+        "dsp_name":  "Kynect Express LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "BECC",
+        "dsp_name":  "Beck Logistics LLC",
+        "cuzio_slug":  "beck-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included",
+                            "note":  "Q3, Q4 and W-2s"
+                        },
+                        {
+                            "name":  "Check Printing",
+                            "status":  "included"
+                        }
+                    ],
+        "notes":  "Reported churn risk 9/21; UZIO files Q3/Q4 and W-2s after ADP refused.",
+        "source":  "wiki/customers/beck-logistics/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "FIFL",
+        "dsp_name":  "FIREFLY LOGISTICS LLC",
+        "cuzio_slug":  "firefly-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Intends Insure125"
+                        },
+                        {
+                            "name":  "EWA",
+                            "status":  "na",
+                            "note":  "Declined"
+                        }
+                    ],
+        "notes":  "Greenfield DSP; QuickBooks Online preference.",
+        "source":  "wiki/customers/firefly-logistics/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "HILG",
+        "dsp_name":  "Highpoint Logistics LLC",
+        "cuzio_slug":  "highpoint-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "180/360, $480/yr; provider TBD"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "$39/yr"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "E-Verify not CA-mandated but available"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd",
+                            "note":  "E-COMP / Hartford TBD"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "Not yet discussed"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Decisely mentioned, not engaged"
+                        }
+                    ],
+        "notes":  "Cortex integration required; Checkr for background checks.",
+        "source":  "wiki/customers/highpoint-logistics/overview.md",
+        "contract_signed_date":  "2026-08-26"
+    },
+    {
+        "dsp_short_code":  "DYO1",
+        "dsp_name":  "Moses Solutions LLC",
+        "cuzio_slug":  "moses-solutions",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "E-Verify not mandatory in NY; MOU sent"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "2 active"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "na",
+                            "note":  "External via Ensura"
+                        },
+                        {
+                            "name":  "EWA",
+                            "status":  "na",
+                            "note":  "Declined"
+                        }
+                    ],
+        "notes":  "Cortex scheduling integration; health benefits moving from Breckpoint to Ensura.",
+        "source":  "wiki/customers/moses-solutions/overview.md",
+        "contract_signed_date":  "2026-08-21"
+    },
+    {
+        "dsp_short_code":  "ELLG",
+        "dsp_name":  "Elevate Logistical Solutions LLC",
+        "cuzio_slug":  "elevate-logistical-solutions",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Scheduling via Cortex sync"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Opted in, voluntary in WI"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "na",
+                            "note":  "Opted out for now"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Ben Admin on hold until talking with broker"
+                        }
+                    ],
+        "notes":  "Executed PDF still lists stale full add-on set; handoff says follow 401(k)+E-Verify only. Headcount 15 vs 40 unreconciled.",
+        "source":  "wiki/customers/elevate-logistical-solutions/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "WEE1",
+        "dsp_name":  "Veterans Delivery Workforce and Logistics LLC",
+        "cuzio_slug":  "vdw-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Scheduling via UZIO"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "4-5 active orders"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "na",
+                            "note":  "Ease; not exploring UZIO integration"
+                        }
+                    ],
+        "notes":  "Separate unmaterialized daycare business flagged; WEE1 is a station code.",
+        "source":  "wiki/customers/vdw-logistics/overview.md",
+        "contract_signed_date":  "2026-09-25"
+    },
+    {
+        "dsp_short_code":  "RNFO",
+        "dsp_name":  "Rainforest Runners Inc.",
+        "cuzio_slug":  "rainforest-runners",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "I-9 only; E-Verify ruled out 8/20 though tracker conflicts"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Bidirectional, provider TBD"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "Requested"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Broker status conflicting"
+                        }
+                    ],
+        "notes":  "Cortex integration live; QuickBooks Online; background checks via Accurate SFTP.",
+        "source":  "wiki/customers/rainforest-runners/overview.md",
+        "contract_signed_date":  "2026-06-23"
+    },
+    {
+        "dsp_short_code":  "LDLO",
+        "dsp_name":  "LeDale Logistics, LLC",
+        "cuzio_slug":  "ledale-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Mobile with geofencing"
+                        },
+                        {
+                            "name":  "HR/Onboarding",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "E-Verify confirmed"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "tbd",
+                            "note":  "Broker being shopped"
+                        }
+                    ],
+        "notes":  "",
+        "source":  "wiki/customers/ledale-logistics/overview.md",
+        "contract_signed_date":  "2026-06-11"
+    },
+    {
+        "dsp_short_code":  "ASP1",
+        "dsp_name":  "Aspire Logistics LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "ARLA",
+        "dsp_name":  "A\u0026O Relay LLC",
+        "cuzio_slug":  "a-o-relay",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Benefits Admin"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Provider unnamed"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "E-Verify",
+                            "status":  "included"
+                        }
+                    ],
+        "notes":  "Amended order form (signed 9/21, countersigned 9/22); AE calls it the NON-DSP package under the same name, so DSP vs non-DSP scope is not fully separated.",
+        "source":  "wiki/customers/a-o-relay/overview.md",
+        "contract_signed_date":  "2026-09-21"
+    },
+    {
+        "dsp_short_code":  "ADDX",
+        "dsp_name":  "Addis Axis Logistics LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "BTKR",
+        "dsp_name":  "BTK RUSH INC",
+        "cuzio_slug":  "btk-rush",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "360 integration; recordkeeper TBD"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "$1.00/form"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "na",
+                            "note":  "Managed externally by broker"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "tbd"
+                        },
+                        {
+                            "name":  "WOTC",
+                            "status":  "tbd"
+                        }
+                    ],
+        "notes":  "Second non-DSP company possibly to be added; wants historical ADP data.",
+        "source":  "wiki/customers/btk-rush/overview.md",
+        "contract_signed_date":  "2026-09-07"
+    },
+    {
+        "dsp_short_code":  "ITFL",
+        "dsp_name":  "Infinity Transport \u0026 Logistics Corp",
+        "cuzio_slug":  "infinity-transport-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Biweekly"
+                        },
+                        {
+                            "name":  "HRIS",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Tax Filing",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Benefits Admin; vendor undecided"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Vendor undecided"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "na",
+                            "note":  "Secured elsewhere for year one"
+                        }
+                    ],
+        "notes":  "Benefits Admin and 401(k) not invoiced until vendor selected; adjacent education business is a separate entity.",
+        "source":  "wiki/customers/infinity-transport-logistics/overview.md",
+        "contract_signed_date":  "2026-09-11"
+    },
+    {
+        "dsp_short_code":  "STR4",
+        "dsp_name":  "STAR 4 LOGISTICS, LLC",
+        "cuzio_slug":  "star-4-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "UZIO-managed"
+                        },
+                        {
+                            "name":  "Contractor/1099",
+                            "status":  "included",
+                            "note":  "Contractor setup covered in onboarding"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Desired, provider TBD"
+                        },
+                        {
+                            "name":  "Workers Comp",
+                            "status":  "na",
+                            "note":  "Capstone Coverage policy"
+                        }
+                    ],
+        "notes":  "Tracker-only conversion; executed order form not confirmed in corpus (customer stated intent to sign 9/10).",
+        "source":  "wiki/customers/star-4-logistics/overview.md",
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "SEHA",
+        "dsp_name":  "SEHAA Delivery LLC",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    },
+    {
+        "dsp_short_code":  "MODR",
+        "dsp_name":  "Modern routes",
+        "cuzio_slug":  "modern-routes",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "included",
+                            "note":  "Adopting UZIO built-in Benefits Admin"
+                        },
+                        {
+                            "name":  "ACA",
+                            "status":  "tbd",
+                            "note":  "$5/employee/yr via UZIO if broker does not cover"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Partner TBD (Human Interest, Vestwell or ADP Retirement)"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "included",
+                            "note":  "Built-in I-9; no E-Verify"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "na",
+                            "note":  "Zero currently; quote line illustrative"
+                        }
+                    ],
+        "notes":  "Order form PDF blank; scope from demo discussion. California only. No tracker row.",
+        "source":  "wiki/customers/modern-routes/overview.md",
+        "contract_signed_date":  "2026-09-30"
+    },
+    {
+        "dsp_short_code":  "CALH",
+        "dsp_name":  "Cali Shipping",
+        "cuzio_slug":  "cali-shipping",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "tbd",
+                            "note":  "Quote variant says yes, handoff says no; Human Interest named"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "tbd",
+                            "note":  "Handoff says yes, deal amount says no"
+                        },
+                        {
+                            "name":  "I-9/E-Verify",
+                            "status":  "tbd",
+                            "note":  "Handoff says yes, deal amount says no"
+                        }
+                    ],
+        "notes":  "Signed deal amount matches the 401(k)-only quote variant but handoff modules say Garnishments plus I-9/E-Verify and no 401(k); unresolved.",
+        "source":  "wiki/customers/cali-shipping/overview.md",
+        "contract_signed_date":  "2026-10-05"
+    },
+    {
+        "dsp_short_code":  "WEE1",
+        "dsp_name":  "VDW Logistics",
+        "cuzio_slug":  "vdw-logistics",
+        "modules":  [
+                        {
+                            "name":  "Payroll",
+                            "status":  "included",
+                            "note":  "Weekly"
+                        },
+                        {
+                            "name":  "Time Management",
+                            "status":  "included",
+                            "note":  "Scheduling via UZIO"
+                        },
+                        {
+                            "name":  "401(k)",
+                            "status":  "included",
+                            "note":  "Human Interest"
+                        },
+                        {
+                            "name":  "Garnishments",
+                            "status":  "included",
+                            "note":  "4-5 active orders"
+                        },
+                        {
+                            "name":  "Benefits",
+                            "status":  "na",
+                            "note":  "Ease; not exploring UZIO integration"
+                        }
+                    ],
+        "notes":  "Separate unmaterialized daycare business flagged; WEE1 is a station code.",
+        "source":  "wiki/customers/vdw-logistics/overview.md",
+        "contract_signed_date":  "2026-09-25"
+    },
+    {
+        "dsp_short_code":  "ABC",
+        "dsp_name":  "ABC Test",
+        "cuzio_slug":  null,
+        "modules":  [
+
+                    ],
+        "notes":  "No Cuzio record matched",
+        "source":  null,
+        "contract_signed_date":  null
+    }
+]

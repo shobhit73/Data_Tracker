@@ -1,40 +1,85 @@
+/* Material Design 3 skin (design.md: designmd.app/library/material-design-3).
+   Every selector from the original sheet is preserved - only the look
+   changed. Tokens follow the MD3 light palette; selector-level rules keep
+   the same class contracts the JS renders against. */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap');
+
 :root {
-  --bg: #f5f6f8; --panel: #ffffff; --ink: #1f2733; --muted: #6b7684;
-  --brand: #0056b3; --line: #e3e7ec; --ok: #28a745; --warn: #e6a700; --bad: #d9364f;
+  /* MD3 light scheme */
+  --bg: #fef7ff;                 /* surface */
+  --panel: #ffffff;              /* cards sit a step above the surface */
+  --surface-cont: #f3edf7;       /* surface-container */
+  --surface-cont-low: #f7f2fa;
+  --surface-cont-high: #ece6f0;
+  --ink: #1d1b20;                /* on-surface */
+  --muted: #49454f;              /* on-surface-variant */
+  --brand: #6750a4;              /* primary */
+  --on-brand: #ffffff;
+  --sec-cont: #e8def8;           /* secondary-container */
+  --on-sec-cont: #1d192b;
+  --line: #cac4d0;               /* outline-variant: borders */
+  --outline: #79747e;            /* outline: form fields */
+  --ok: #2e7d32; --warn: #b26a00; --bad: #b3261e;  /* error per spec */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 28px;
+  --e1: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px 1px rgba(0,0,0,.15);
+  --e3: 0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.3);
 }
 * { box-sizing: border-box; }
-body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
-h1 { font-size: 20px; margin: 0; } h2 { font-size: 15px; margin: 18px 0 8px; }
+body { margin: 0; font: 14px/1.5 'Roboto', 'Roboto Flex', system-ui, sans-serif;
+  color: var(--ink); background: var(--bg); }
+h1 { font-size: 22px; font-weight: 500; margin: 0; }
+h2 { font-size: 15px; font-weight: 600; margin: 18px 0 8px; }
 a { color: var(--brand); text-decoration: none; }
-button { font: inherit; padding: 7px 14px; border: 1px solid var(--line); border-radius: 6px;
-  background: var(--brand); color: #fff; cursor: pointer; }
-button.small { padding: 3px 9px; font-size: 12px; }
-button.secondary, .tabs button { background: #fff; color: var(--ink); }
-input, select { font: inherit; max-width: 260px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+a:hover { text-decoration: underline; }
+
+/* Buttons: MD3 filled, full-round. Hover/pressed states and a visible focus
+   ring are required by the spec. */
+button { font: inherit; font-weight: 500; padding: 8px 18px; border: none;
+  border-radius: 999px; background: var(--brand); color: var(--on-brand);
+  cursor: pointer; transition: box-shadow .15s, background .15s; }
+button:hover:not(:disabled) { box-shadow: var(--e1); filter: brightness(1.08); }
+button:active:not(:disabled) { filter: brightness(.95); }
+button.small { padding: 4px 12px; font-size: 12px; }
+/* Tonal variant - the pairing rule stands: background and color together. */
+button.secondary, .tabs button { background: var(--sec-cont); color: var(--on-sec-cont); }
+:is(button, input, select, a, summary):focus-visible {
+  outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* Outlined text fields. */
+input, select { font: inherit; max-width: 260px; padding: 8px 12px;
+  border: 1px solid var(--outline); border-radius: var(--r-sm); background: #fff;
+  color: var(--ink); }
+input:focus, select:focus { border-color: var(--brand); }
 .muted { color: var(--muted); }
 
 #login, #reset { display: flex; min-height: 100vh; align-items: center; justify-content: center; }
-.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  padding: 28px; width: 340px; box-shadow: 0 4px 16px rgba(31,39,51,.08); }
-.login-card h1 { margin-bottom: 14px; }
-.login-card form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-#reset-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.login-card { background: var(--surface-cont-low); border: none;
+  border-radius: var(--r-xl); padding: 32px; width: 360px; box-shadow: var(--e3); }
+.login-card h1 { margin-bottom: 14px; color: var(--brand); }
+.login-card form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+#reset-form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
 .tabs { display: flex; gap: 6px; }
-.tabs button.active { border-color: var(--brand); color: var(--brand); font-weight: 600; }
+.tabs button.active { background: var(--brand); color: var(--on-brand); font-weight: 600; }
 .hint { color: var(--muted); font-size: 12px; }
 
+/* Navigation drawer: light surface container with pill-shaped active
+   indicator (secondary container), per MD3 - replaces the old navy rail. */
 #app { display: flex; min-height: 100vh; }
-#nav { width: 200px; background: #14263c; color: #dbe4ee; display: flex; flex-direction: column; flex-shrink: 0; }
-.brand { font-weight: 700; padding: 18px 16px; font-size: 16px; color: #fff; }
-#nav-items { display: flex; flex-direction: column; }
-#nav-items a { color: #dbe4ee; padding: 10px 16px; }
-#nav-items a.active { background: rgba(255,255,255,.12); color: #fff; font-weight: 600; }
-.nav-foot { margin-top: auto; padding: 14px 16px; font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
-.nav-foot button { background: transparent; border-color: #3c5570; color: #dbe4ee; }
-#view { flex: 1; padding: 22px 26px; min-width: 0; }
+#nav { width: 216px; background: var(--surface-cont); color: var(--muted);
+  display: flex; flex-direction: column; flex-shrink: 0; }
+.brand { font-weight: 700; padding: 20px 20px 12px; font-size: 17px; color: var(--brand); }
+#nav-items { display: flex; flex-direction: column; gap: 2px; padding: 0 10px; }
+#nav-items a { color: var(--muted); padding: 10px 14px; border-radius: 999px; font-weight: 500; }
+#nav-items a:hover { background: var(--surface-cont-high); text-decoration: none; }
+#nav-items a.active { background: var(--sec-cont); color: var(--on-sec-cont); font-weight: 600; }
+.nav-foot { margin-top: auto; padding: 14px 16px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 8px; }
+.nav-foot button { background: transparent; border: 1px solid var(--outline); color: var(--ink); }
+#view { flex: 1; padding: 24px 28px; min-width: 0; }
 
 .page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.card { background: var(--panel); border: none; border-radius: var(--r-lg);
+  padding: 16px; margin-bottom: 14px; box-shadow: var(--e1); }
 .card { display: block; }
 #new-client-form { display: none; gap: 8px; flex-wrap: wrap; }
 #new-client-form.open { display: flex; }
@@ -42,31 +87,36 @@ input, select { font: inherit; max-width: 260px; padding: 7px 9px; border: 1px s
 .head-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 
 table.grid { width: 100%; border-collapse: collapse; background: var(--panel);
-  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.grid th, .grid td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.grid th { background: #f0f3f7; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
-tr.rowlink { cursor: pointer; } tr.rowlink:hover { background: #f6f9fd; }
+  border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.grid th, .grid td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.grid th { background: var(--surface-cont); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+tr.rowlink { cursor: pointer; } tr.rowlink:hover { background: var(--surface-cont-low); }
 
-.chip { display: inline-block; background: #e8f0fb; color: var(--brand); border-radius: 10px;
-  padding: 1px 8px; font-size: 11px; margin-right: 4px; }
+.chip { display: inline-block; background: var(--sec-cont); color: #4a4458;
+  border-radius: var(--r-sm); padding: 2px 10px; font-size: 11px; font-weight: 500; margin-right: 4px; }
 .rag { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
 .rag-G { background: var(--ok); } .rag-A { background: var(--warn); } .rag-R { background: var(--bad); }
-.bar { display: inline-block; width: 70px; height: 8px; background: var(--line); border-radius: 4px; vertical-align: middle; }
-.bar span { display: block; height: 100%; background: var(--ok); border-radius: 4px; }
+.bar { display: inline-block; width: 70px; height: 8px; background: var(--surface-cont-high);
+  border-radius: 999px; vertical-align: middle; overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--brand); border-radius: 999px; }
 .note { font-size: 12px; color: var(--ink); margin: 2px 0; }
 .notes-cell { max-width: 320px; }
 .tabbar { display: flex; gap: 6px; margin: 16px 0 10px; }
-.tabbar button { background: #fff; color: var(--ink); }
-.tabbar button.active { border-color: var(--brand); color: var(--brand); font-weight: 600; }
+.tabbar button { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.tabbar button.active { background: var(--sec-cont); color: var(--on-sec-cont);
+  border-color: transparent; font-weight: 600; }
 
-#toast { position: fixed; top: 14px; right: 14px; z-index: 10; padding: 10px 16px; border-radius: 8px;
-  color: #fff; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 340px; }
+/* Snackbar. */
+#toast { position: fixed; top: 14px; right: 14px; z-index: 10; padding: 12px 16px;
+  border-radius: var(--r-sm); color: #f5eff7; opacity: 0; pointer-events: none;
+  transition: opacity .2s; max-width: 340px; box-shadow: var(--e3); }
 #toast.show { opacity: 1; }
-#toast.err { background: var(--bad); } #toast.ok { background: var(--ok); }
+#toast.err { background: var(--bad); } #toast.ok { background: #1e4620; }
 #toast.show { pointer-events: auto; }
-#toast #toast-undo { margin-left: 12px; padding: 2px 10px; font-size: 12px;
-  background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.5);
-  color: #fff; border-radius: 5px; cursor: pointer; }
+#toast #toast-undo { margin-left: 12px; padding: 2px 12px; font-size: 12px;
+  background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.5);
+  color: #fff; border-radius: 999px; cursor: pointer; }
 
 @media (max-width: 760px) {
   #app { flex-direction: column; }
@@ -74,46 +124,57 @@ tr.rowlink { cursor: pointer; } tr.rowlink:hover { background: #f6f9fd; }
   #nav-items { flex-direction: row; }
   .nav-foot { margin-top: 0; margin-left: auto; flex-direction: row; align-items: center; }
 }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
 
 h2 { margin-top: 22px; }
 .act-row { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .act-row:last-child { border-bottom: none; }
 .act-row .when { color: var(--muted); margin-right: 8px; font-size: 12px; }
 
-.pill { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.pill-open { background: #eceff3; color: #5a6673; }
-.pill-progress { background: #fdf3d7; color: #8a6d00; }
-.pill-done { background: #e2f4e8; color: #1d7a3d; }
-.pill-na { background: #f4f4f4; color: #a6adb5; }
-.pill-notstarted { background: #eceff3; color: #5a6673; }
-.pill-live { background: #e2f4e8; color: #1d7a3d; }
-.pill-completed { background: #cfe8d8; color: #14532d; }
+/* Status pills: tonal containers, MD3 radius. Same semantic colors the team
+   already reads, re-tuned onto the lavender surface. */
+.pill { display: inline-block; padding: 2px 10px; border-radius: var(--r-sm);
+  font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill-open { background: var(--surface-cont-high); color: var(--muted); }
+.pill-progress { background: #fdf3d7; color: #7a5c00; }
+.pill-done { background: #d7efdc; color: #0f5223; }
+.pill-na { background: var(--surface-cont-low); color: #938f99; }
+.pill-notstarted { background: var(--surface-cont-high); color: var(--muted); }
+.pill-live { background: #d7efdc; color: #0f5223; }
+.pill-completed { background: #c4e4cd; color: #0b3d1a; }
 
-.tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 11px; margin-left: 6px; border: 1px solid var(--line); color: var(--muted); }
+.tag { display: inline-block; padding: 1px 8px; border-radius: var(--r-sm);
+  font-size: 11px; margin-left: 6px; border: 1px solid var(--line); color: var(--muted); }
 
 .overdue { color: var(--bad); font-weight: 600; }
 
 .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
-.filter-bar input[type="search"] { flex: 1; min-width: 200px; }
+.filter-bar input[type="search"] { flex: 1; min-width: 200px; border-radius: 999px; }
 
-.modal-backdrop { position: fixed; inset: 0; background: rgba(15, 25, 40, .45); display: none; align-items: center; justify-content: center; z-index: 20; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(29, 27, 32, .45);
+  display: none; align-items: center; justify-content: center; z-index: 20; }
 .modal-backdrop.open { display: flex; }
-.modal { background: var(--panel); border-radius: 10px; padding: 22px; width: 440px; max-width: 92vw; box-shadow: 0 12px 40px rgba(0, 0, 0, .25); }
+.modal { background: var(--bg); border-radius: var(--r-xl); padding: 24px;
+  width: 440px; max-width: 92vw; box-shadow: var(--e3); }
 .modal h2 { margin: 0 0 14px; }
 .modal form { display: flex; flex-direction: column; gap: 10px; }
 .modal label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
-select.sel-done { background: #e2f4e8; }
+select.sel-done { background: #d7efdc; }
 select.sel-inprogress { background: #fdf3d7; }
-select.sel-na { background: #f4f4f4; color: #a6adb5; }
+select.sel-na { background: var(--surface-cont-low); color: #938f99; }
 
-.pill-cancelled { background: #fbe3e7; color: #a4243b; }
-.pill-onhold { background: #fdf3d7; color: #8a6d00; }
-.pill-unresponsive { background: #ece4f6; color: #6b34a8; }
+.pill-cancelled { background: #f9dedc; color: #8c1d18; }
+.pill-onhold { background: #fdf3d7; color: #7a5c00; }
+.pill-unresponsive { background: var(--sec-cont); color: #4a4458; }
 
-details.cgroup { margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-details.cgroup > summary { cursor: pointer; padding: 10px 14px; list-style: none; display: flex; gap: 8px; align-items: center; }
+details.cgroup { margin: 12px 0; border: none; border-radius: var(--r-lg);
+  background: var(--panel); box-shadow: var(--e1); }
+details.cgroup > summary { cursor: pointer; padding: 12px 16px; list-style: none;
+  display: flex; gap: 8px; align-items: center; border-radius: var(--r-lg); }
 details.cgroup > summary::-webkit-details-marker { display: none; }
 details.cgroup > summary::before { content: "▸"; color: var(--muted); }
 details.cgroup[open] > summary::before { content: "▾"; }
@@ -128,10 +189,22 @@ details.cgroup table.grid { border: none; border-radius: 0; }
    does not jump while a refresh runs. */
 .refresh-control { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
 .btn-refresh {
-  padding: 5px 12px; border: 1px solid var(--line, #d6d9de); border-radius: 6px;
-  background: #fff; cursor: pointer; font: inherit; white-space: nowrap;
+  /* color is NOT optional here: the global `button` rule pairs the brand
+     background with light text, so overriding only the background would
+     leave an invisible button. Outlined MD3 variant: both set together. */
+  padding: 6px 14px; border: 1px solid var(--outline); border-radius: 999px;
+  background: transparent; color: var(--brand); cursor: pointer; font: inherit;
+  font-weight: 500; white-space: nowrap;
 }
-.btn-refresh:hover:not(:disabled) { background: #f4f6f8; }
+.btn-refresh:hover:not(:disabled) { background: var(--sec-cont); box-shadow: none; filter: none; }
 .btn-refresh:disabled { opacity: .55; cursor: progress; }
 .refresh-status { font-size: 12px; }
-.refresh-status--error { color: #b3261e; }
+.refresh-status--error { color: var(--bad); }
+
+/* The Data page head has three children now, and .page-head is
+   justify-content: space-between -- which would strand the client count in
+   the middle. Pushing the count right instead keeps it next to the button and
+   leaves the heading where it was. Scoped to this page so no other page-head
+   moves. */
+.page-head #data-count { margin-left: auto; }
+.page-head .refresh-control { margin-left: 12px; }

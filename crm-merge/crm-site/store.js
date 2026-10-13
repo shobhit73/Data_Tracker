@@ -195,7 +195,7 @@ window.Store = (() => {
     return data || [];
   }
   async function getPlatformBundle(shortCode) {
-    const [profile, sys, locs, cov, docs, health, hist, histPend] = await Promise.all([
+    const [profile, sys, locs, cov, docs, health, hist, histPend, signedRows] = await Promise.all([
       listWhere("client_profile", "dsp_short_code", shortCode),
       listWhere("client_system_activity", "dsp_short_code", shortCode),
       listWhere("client_work_locations", "dsp_short_code", shortCode),
@@ -205,6 +205,7 @@ window.Store = (() => {
       listWhere("hist_clients", "dsp_short_code", shortCode),
       listWhere("hist_status", "dsp_short_code", shortCode)
         .then((rows) => rows.filter((r) => r.status === "Pending")),
+      listWhere("client_signed_modules", "dsp_short_code", shortCode),
     ]);
     const fein = profile[0]?.fein || cov[0]?.fein || sys[0]?.fein || null;
     // The transfer record has no short code, only a client name — the whole
@@ -216,7 +217,8 @@ window.Store = (() => {
     ]);
     return { profile: profile[0] || null, sys: sys[0] || null, locs,
              cov: cov[0] || null, docs: docs[0] || null, health: health[0] || null,
-             hist: hist[0] || null, histPend, api, transfers, fein };
+             hist: hist[0] || null, histPend, api, transfers, fein,
+             signed: signedRows[0] || null };
   }
 
   async function getActivity(clientId) {

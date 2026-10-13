@@ -51,7 +51,8 @@ window.Store = {
       hist: one("hist_clients"),
       histPend: all("hist_status").filter((r) => r.status === "Pending"),
       api: (FIXTURE.api_activity_runs || []).filter((r) => r.fein === fein),
-      transfers: FIXTURE.document_transfer || [], fein };
+      transfers: FIXTURE.document_transfer || [], fein,
+      signed: one("client_signed_modules") };
   },
 };
 </script>

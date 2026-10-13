@@ -69,23 +69,36 @@ async function runProdRefresh(jobs, onLine) {
   return body;
 }
 
-/** A refresh button plus its own status line, for one Data tab. */
-function refreshControl(jobs) {
+/**
+ * A refresh button plus its own status line.
+ *
+ * `batches` is either one list of jobs, or several run one after another.
+ * Several matters for the whole-set refresh: an Edge Function has a wall-clock
+ * limit, and load_history is the one job that deletes before it re-inserts, so
+ * it gets a call of its own rather than sharing a timeout with six others.
+ */
+function refreshControl(batches, label) {
+  if (typeof batches[0] === "string") batches = [batches];
   const wrap = document.createElement("span");
   wrap.className = "refresh-control";
   wrap.innerHTML =
-    '<button type="button" class="btn-refresh">Refresh from Uzio</button>' +
+    '<button type="button" class="btn-refresh"></button>' +
     '<span class="refresh-status muted"></span>';
   const btn = wrap.querySelector("button");
   const status = wrap.querySelector(".refresh-status");
+  btn.textContent = label || "Refresh from Uzio";
 
   btn.onclick = async () => {
     btn.disabled = true;
-    // It reads prod and rewrites two projects; ~20s is normal and a silent
-    // button for that long reads as broken.
-    status.textContent = "Reading Uzio… this takes up to a minute.";
     try {
-      await runProdRefresh(jobs, (l) => console.log("[prod-refresh]", l));
+      for (let i = 0; i < batches.length; i++) {
+        // It reads prod and rewrites two projects; tens of seconds is normal,
+        // and a silent button for that long reads as broken.
+        status.textContent = batches.length > 1
+          ? `Reading Uzio… step ${i + 1} of ${batches.length}`
+          : "Reading Uzio… this takes up to a minute.";
+        await runProdRefresh(batches[i], (l) => console.log("[prod-refresh]", l));
+      }
       status.textContent = "Done. Reloading…";
       // Re-render from the CRM's now-updated copy.
       location.reload();
@@ -99,16 +112,53 @@ function refreshControl(jobs) {
   return wrap;
 }
 
+/* Everything, in three calls.
+   1. the jobs that only upsert, so a failure leaves the old rows in place
+   2. load_history on its own -- it rebuilds each client's slice, and a
+      timeout halfway through that is the one outcome worth engineering away
+   3. the copy into this project, last, because it copies whatever is there
+      at the moment it runs */
+const REFRESH_EVERYTHING = [
+  ["backfill_fein", "work_locations", "data_coverage",
+   "document_counts", "system_activity", "payroll_health", "api_activity"],
+  ["load_history"],
+  ["push_to_crm"],
+];
+
+
 const dpill = (label, cls) => `<span class="pill ${cls}">${esc(label)}</span>`;
 const dpct = (num, den) => den ? Math.round(num / den * 100) : null;
 const dbar = (p) => p === null ? `<span class="muted">—</span>`
   : `<span class="bar"><span style="width:${Math.min(100, p)}%"></span></span> ${p}%`;
 const dshort = (d) => d ? String(d).slice(5) : ""; // 2026-08-18 -> 08-18
 
+/* --- Pagination for the long grids. Client-side: the tables hold at most a
+   few hundred rows, already fully fetched — slicing beats re-querying. Each
+   tab keeps its own page counter; the pager only renders past one page, and
+   the search box resets every counter through render.reset. --- */
+const PAGE_SIZE = 25;
+function pageSlice(list, page) {
+  const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  const p = Math.min(Math.max(0, page), pages - 1);
+  return { rows: list.slice(p * PAGE_SIZE, (p + 1) * PAGE_SIZE), p, pages };
+}
+function pagerHtml(key, p, pages, total) {
+  if (pages <= 1) return "";
+  return `<div class="filter-bar" style="margin:10px 0 0;justify-content:flex-end">
+    <button type="button" class="small secondary" data-pg="${key}:prev" ${p === 0 ? "disabled" : ""}>‹ Prev</button>
+    <span class="muted">page ${p + 1} of ${pages} · ${total} rows</span>
+    <button type="button" class="small secondary" data-pg="${key}:next" ${p >= pages - 1 ? "disabled" : ""}>Next ›</button>
+  </div>`;
+}
+function hookPager(key, step) {
+  document.querySelectorAll(`#data-body [data-pg^="${key}:"]`).forEach((b) =>
+    b.onclick = () => step(b.dataset.pg.endsWith(":next") ? 1 : -1));
+}
+
 Views.renderData = async (view, tab) => {
   if (!DATA_TABS.some(([k]) => k === tab)) tab = "api";
   view.innerHTML = `
-    <div class="page-head"><h1>Data</h1><span id="data-count" class="muted"></span></div>
+    <div class="page-head"><h1>Data</h1><span id="data-count" class="muted"></span><span id="data-refresh-all"></span></div>
     <div class="tabbar">${DATA_TABS.map(([k, label]) =>
       `<button type="button" data-tab="${k}" class="${k === tab ? "active" : ""}">${label}</button>`).join("")}
     </div>
@@ -119,8 +169,16 @@ Views.renderData = async (view, tab) => {
     <div id="data-body"><p class="muted">Loading…</p></div>`;
   view.querySelectorAll("[data-tab]").forEach((b) =>
     b.onclick = () => { location.hash = "#data/" + b.dataset.tab; });
+  // Every prod job, not just the open tab's. The per-tab buttons stay: most
+  // of the time one tab is what someone actually wants, and it is far quicker.
+  $("#data-refresh-all").appendChild(
+    refreshControl(REFRESH_EVERYTHING, "Refresh everything"));
   let renderBody = () => {}; // becomes real once the tab's data has arrived
-  $("#data-q").oninput = (e) => { dataQ = e.target.value.trim().toLowerCase(); renderBody(); };
+  $("#data-q").oninput = (e) => {
+    dataQ = e.target.value.trim().toLowerCase();
+    if (renderBody.reset) renderBody.reset(); // a new search starts on page 1
+    renderBody();
+  };
 
   const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab };
   renderBody = await renderers[tab]();
@@ -158,21 +216,26 @@ async function apiTab() {
   };
   const hasGap = (c) => API_MODULES.some(([m]) => !c.runs[m] || c.runs[m].run_status !== "ok");
 
+  let page = 0;
   const render = () => {
     const list = clients.filter((c) =>
       (!dataQ || c.name.toLowerCase().includes(dataQ)) &&
       (vendor === "all" || c.vendor === vendor) &&
       (!gapsOnly || hasGap(c)));
+    const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th>${API_MODULES.map(([, h]) => `<th>${h}</th>`).join("")}
-      </tr></thead><tbody>${list.map((c) => `<tr>
+      </tr></thead><tbody>${pg.rows.map((c) => `<tr>
         <td><b>${esc(c.name)}</b><div class="muted" style="font-size:11px">${esc(c.vendor || "")}</div></td>
         ${API_MODULES.map(([m]) => cell(c.runs[m])).join("")}</tr>`).join("") ||
-      `<tr><td colspan="${API_MODULES.length + 1}" class="muted">No clients match.</td></tr>`}</tbody></table></div>`;
+      `<tr><td colspan="${API_MODULES.length + 1}" class="muted">No clients match.</td></tr>`}</tbody></table></div>` +
+      pagerHtml("api", pg.p, pg.pages, list.length);
+    hookPager("api", (d) => { page += d; render(); });
     $("#data-count").textContent = `${list.length} of ${clients.length} clients`;
   };
-  $("#api-vendor").onchange = (e) => { vendor = e.target.value; render(); };
-  $("#api-gaps").onchange = (e) => { gapsOnly = e.target.checked; render(); };
+  render.reset = () => { page = 0; };
+  $("#api-vendor").onchange = (e) => { vendor = e.target.value; page = 0; render(); };
+  $("#api-gaps").onchange = (e) => { gapsOnly = e.target.checked; page = 0; render(); };
   return render;
 }
 
@@ -183,17 +246,20 @@ async function healthTab() {
   const statuses = [...new Set(rows.map((r) => r.status).filter(Boolean))].sort();
   $("#data-extra").innerHTML = `<select id="ph-status"><option value="all">All statuses</option>
     ${statuses.map((s) => `<option>${esc(s)}</option>`).join("")}</select>`;
+  $("#data-extra").appendChild(refreshControl(["payroll_health", "push_to_crm"]));
   const pillCls = (s) => s === "Covered" ? "pill-done" : s === "New to platform" ? "pill-na"
     : s === "Handover gap" ? "pill-onhold" : "pill-cancelled";
   const span = (from, to, n) => from ? `${esc(from)} → ${esc(to)}<div class="muted" style="font-size:11px">${n ?? 0} rows</div>` : `<span class="muted">—</span>`;
 
+  let page = 0;
   const render = () => {
     const list = rows.filter((r) =>
       (!dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ)) &&
       (status === "all" || r.status === status));
+    const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th><th>Prev system</th><th>Prior payroll data</th><th>Uzio runs</th><th>Gap</th><th>Status</th><th>Checked</th>
-      </tr></thead><tbody>${list.map((r) => `<tr>
+      </tr></thead><tbody>${pg.rows.map((r) => `<tr>
         <td><b>${esc(r.company_name)}</b><div class="muted" style="font-size:11px">${esc(r.dsp_short_code || "")}</div></td>
         <td>${esc(r.previous_system || "—")}</td>
         <td>${span(r.prior_from, r.prior_to, r.prior_rows)}</td>
@@ -201,11 +267,14 @@ async function healthTab() {
         <td>${r.gap_days ? `<span class="overdue" title="${esc(r.gap_ranges || "")}">${r.gap_days}d</span>` : `<span class="muted">—</span>`}</td>
         <td>${dpill(r.status || "?", pillCls(r.status))}</td>
         <td>${fmtDate(r.checked_date)}</td></tr>`).join("") ||
-      `<tr><td colspan="7" class="muted">No clients match.</td></tr>`}</tbody></table></div>`;
+      `<tr><td colspan="7" class="muted">No clients match.</td></tr>`}</tbody></table></div>` +
+      pagerHtml("health", pg.p, pg.pages, list.length);
+    hookPager("health", (d) => { page += d; render(); });
     $("#data-count").textContent = `${list.length} of ${rows.length} clients · ` +
       `${rows.filter((r) => r.handover_gap).length} with gaps`;
   };
-  $("#ph-status").onchange = (e) => { status = e.target.value; render(); };
+  render.reset = () => { page = 0; };
+  $("#ph-status").onchange = (e) => { status = e.target.value; page = 0; render(); };
   return render;
 }
 
@@ -213,12 +282,15 @@ async function healthTab() {
 async function coverageTab() {
   const rows = await Store.listDataCoverage();
   $("#data-extra").innerHTML = "";
+  $("#data-extra").appendChild(refreshControl(["data_coverage", "push_to_crm"]));
+  let page = 0;
   const render = () => {
     const list = rows.filter((r) =>
       !dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ));
+    const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th><th>Employees</th><th>Payment method</th><th>Emergency contact</th><th>Licence</th><th>Worker comp</th>
-      </tr></thead><tbody>${list.map((r) => {
+      </tr></thead><tbody>${pg.rows.map((r) => {
         const a = r.active_employees;
         return `<tr>
         <td><b>${esc(r.company_name)}</b><div class="muted" style="font-size:11px">${esc(r.dsp_short_code || "")}</div></td>
@@ -228,9 +300,12 @@ async function coverageTab() {
         <td>${dbar(dpct(r.active_with_licence, a))}</td>
         <td title="${esc(r.worker_comp_codes || "")}">${dbar(dpct(r.active_with_worker_comp, a))}</td></tr>`;
       }).join("") ||
-      `<tr><td colspan="6" class="muted">No clients match.</td></tr>`}</tbody></table></div>`;
+      `<tr><td colspan="6" class="muted">No clients match.</td></tr>`}</tbody></table></div>` +
+      pagerHtml("cov", pg.p, pg.pages, list.length);
+    hookPager("cov", (d) => { page += d; render(); });
     $("#data-count").textContent = `${list.length} of ${rows.length} clients`;
   };
+  render.reset = () => { page = 0; };
   return render;
 }
 
@@ -242,6 +317,9 @@ async function docsTab() {
   const [transfers, counts] = await Promise.all([
     Store.listDocumentTransfers(), Store.listDocumentCounts()]);
   $("#data-extra").innerHTML = "";
+  // Only the counted half: the transfer columns come from the completion
+  // mails, which no prod query can rebuild.
+  $("#data-extra").appendChild(refreshControl(["document_counts", "push_to_crm"]));
   const pillCls = (s) => s === "Complete" ? "pill-done" : s === "Blocked" ? "pill-cancelled"
     : s === "In progress" ? "pill-progress" : s === "Nothing to transfer" ? "pill-na" : "pill-onhold";
   const failTitle = (r) => ["filename format: " + (r.fail_filename_format ?? 0),
@@ -250,15 +328,18 @@ async function docsTab() {
     "size limit: " + (r.fail_size_limit ?? 0),
     "resolved since: " + (r.failed_resolved ?? 0)].join("\n");
 
+  let pageT = 0, pageC = 0;
   const render = () => {
     const t = transfers.filter((r) => !dataQ || r.client_name.toLowerCase().includes(dataQ));
     const c = counts.filter((r) =>
       !dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ));
+    const pgT = pageSlice(t, pageT); pageT = pgT.p;
+    const pgC = pageSlice(c, pageC); pageC = pgC.p;
     $("#data-body").innerHTML = `
       <h2>Transfers (from the transfer mails)</h2>
       <div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th><th>Status</th><th>Date</th><th>Docs</th><th>Failed</th><th>Jira</th><th class="notes-cell">Notes</th>
-      </tr></thead><tbody>${t.map((r) => `<tr>
+      </tr></thead><tbody>${pgT.rows.map((r) => `<tr>
         <td><b>${esc(r.client_name)}</b></td>
         <td>${dpill(r.status || "?", pillCls(r.status))}</td>
         <td>${fmtDate(r.transfer_date)}</td>
@@ -266,17 +347,22 @@ async function docsTab() {
         <td title="${esc(failTitle(r))}">${r.failed_docs ? `<span class="overdue">${r.failed_docs}</span>` : "0"}</td>
         <td>${esc(r.jira_id || "—")}</td>
         <td class="notes-cell"><span class="note">${esc(r.notes || "")}</span></td></tr>`).join("") ||
-      `<tr><td colspan="7" class="muted">No clients match.</td></tr>`}</tbody></table></div>
+      `<tr><td colspan="7" class="muted">No clients match.</td></tr>`}</tbody></table></div>` +
+      pagerHtml("doct", pgT.p, pgT.pages, t.length) + `
       <h2>In the database (per client)</h2>
       <div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th><th>Documents</th><th>Employees with docs</th>
-      </tr></thead><tbody>${c.map((r) => `<tr>
+      </tr></thead><tbody>${pgC.rows.map((r) => `<tr>
         <td><b>${esc(r.company_name)}</b><div class="muted" style="font-size:11px">${esc(r.dsp_short_code || "")}</div></td>
         <td>${r.documents ?? 0}</td>
         <td>${r.employees_with_docs ?? 0} of ${r.total_employees ?? "?"} employees ${dbar(dpct(r.employees_with_docs, r.total_employees))}</td></tr>`).join("") ||
-      `<tr><td colspan="3" class="muted">No clients match.</td></tr>`}</tbody></table></div>`;
+      `<tr><td colspan="3" class="muted">No clients match.</td></tr>`}</tbody></table></div>` +
+      pagerHtml("docc", pgC.p, pgC.pages, c.length);
+    hookPager("doct", (d) => { pageT += d; render(); });
+    hookPager("docc", (d) => { pageC += d; render(); });
     $("#data-count").textContent = `${t.length} transfers · ${c.length} clients counted`;
   };
+  render.reset = () => { pageT = 0; pageC = 0; };
   return render;
 }
 
@@ -383,7 +469,24 @@ async function loadPlatformPanel(c) {
       <div class="muted" style="font-size:12px">${esc([l.address_line1, l.address_line2, l.city, l.state, l.zip_code].filter(Boolean).join(", "))}</div>
     </div>`).join("");
 
-  const html =
+  /* Signed modules: what the client's order form actually covers, extracted
+     from Cuzio's customer page. Always open — it is the contract's scope, the
+     first thing worth seeing about a client. Green = included, amber = TBD
+     (deferred on the order form), grey = explicitly N/A. */
+  const sm = b.signed;
+  const smCard = sm && Array.isArray(sm.modules) && sm.modules.length
+    ? `<div class="card" style="margin-bottom:14px"><h2 style="margin-top:0">Signed modules
+        <span class="muted" style="font-size:11px;font-weight:400">order form, via Cuzio${sm.extracted_at ? ` · ${esc(String(sm.extracted_at).slice(0, 10))}` : ""}</span></h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${sm.modules.map((m) => {
+        const st = String(m.status || "included").toLowerCase();
+        const cls = st === "included" ? "pill-done" : st === "tbd" ? "pill-onhold" : "pill-na";
+        const label = m.name + (st === "tbd" ? " · TBD" : st === "na" ? " · N/A" : "");
+        return `<span title="${esc(m.note || "")}">${dpill(label, cls)}</span>`;
+      }).join("")}</div>
+      ${sm.notes ? `<div class="muted" style="font-size:12px;margin-top:8px">${esc(sm.notes)}</div>` : ""}</div>`
+    : "";
+
+  const html = smCard +
     sect("System go-live — what prod shows", tbl(sysRows)) +
     sect("Benefits", tbl(benRows)) +
     sect("Documents", tbl(docRows)) +
@@ -421,12 +524,14 @@ async function histTab() {
       <span class="tag">${esc(o.reason || "")}</span>
       ${o.notes ? `<div class="muted" style="font-size:12px">${esc(o.notes)}</div>` : ""}</div>`).join("") : "";
 
+  let page = 0;
   const render = () => {
     const list = clients.filter((c) =>
       (!dataQ || (c.dsp_name + " " + c.dsp_short_code).toLowerCase().includes(dataQ)) &&
       (show === "all" || (show === "done" ? c.pending === 0 : c.pending > 0)))
       .sort((a, b) => pct(b) - pct(a) || a.dsp_name.localeCompare(b.dsp_name));
-    $("#data-body").innerHTML = list.map((c) => {
+    const pg = pageSlice(list, page); page = pg.p;
+    $("#data-body").innerHTML = pg.rows.map((c) => {
       const pend = pendingBy[c.dsp_short_code] || [];
       const p = pct(c);
       return `<details class="cgroup"><summary>
@@ -441,11 +546,14 @@ async function histTab() {
         `<p class="muted" style="padding:0 14px 12px">Nothing left to collect.</p>`}
       </details>`;
     }).join("") || `<p class="muted">No clients match.</p>`;
-    $("#data-body").innerHTML += oosBlock("On hold (auto-resumes with the RAG)", hold) +
+    $("#data-body").innerHTML += pagerHtml("hist", pg.p, pg.pages, list.length) +
+      oosBlock("On hold (auto-resumes with the RAG)", hold) +
       oosBlock("Out of scope — do not chase", gone);
+    hookPager("hist", (d) => { page += d; render(); });
     $("#data-count").textContent = `${list.length} of ${clients.length} tracked · ` +
       `${clients.filter((c) => c.pending > 0).length} still collecting`;
   };
-  $("#h-filter").onchange = (e) => { show = e.target.value; render(); };
+  render.reset = () => { page = 0; };
+  $("#h-filter").onchange = (e) => { show = e.target.value; page = 0; render(); };
   return render;
 }

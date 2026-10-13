@@ -151,7 +151,9 @@ function pagerHtml(key, p, pages, total) {
   </div>`;
 }
 function hookPager(key, step) {
-  document.querySelectorAll(`#data-body [data-pg^="${key}:"]`).forEach((b) =>
+  // Document-wide on purpose: the Clients, Audit Status and Open Items pages
+  // use the same pager, and only one view is ever mounted at a time.
+  document.querySelectorAll(`[data-pg^="${key}:"]`).forEach((b) =>
     b.onclick = () => step(b.dataset.pg.endsWith(":next") ? 1 : -1));
 }
 

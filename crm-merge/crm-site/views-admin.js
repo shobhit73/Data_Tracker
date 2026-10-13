@@ -193,10 +193,14 @@ Views.renderAuditStatus = async (view) => {
       <td><span class="bar"><span style="width:${p}%"></span></span> ${p}%</td></tr>`;
   };
 
+  let page = 0;
   const render = () => {
     const list = matches();
-    $("#audit-rows").innerHTML = list.map(rowHtml).join("") ||
+    const pg = pageSlice(list, page); page = pg.p;
+    $("#audit-rows").innerHTML = pg.rows.map(rowHtml).join("") ||
       `<tr><td colspan="${colTitles.length + 2}" class="muted">No clients match.</td></tr>`;
+    $("#audit-pager").innerHTML = pagerHtml("aud", pg.p, pg.pages, list.length);
+    hookPager("aud", (d) => { page += d; render(); });
     $("#audit-count").textContent = `${list.length} of ${clients.length} migrating clients`;
     wireClientRows(view);
   };
@@ -213,9 +217,10 @@ Views.renderAuditStatus = async (view) => {
     </div>
     <div style="overflow-x:auto"><table class="grid"><thead><tr>
       <th>Client</th>${colTitles.map((t) => `<th>${esc(t.replace(" Audit", ""))}</th>`).join("")}<th>Done</th>
-    </tr></thead><tbody id="audit-rows"></tbody></table></div>`;
-  $("#as-q").oninput = (e) => { auditQuery = e.target.value.trim().toLowerCase(); render(); };
-  $("#as-filter").onchange = (e) => { auditFilter = e.target.value; render(); };
+    </tr></thead><tbody id="audit-rows"></tbody></table></div>
+    <div id="audit-pager"></div>`;
+  $("#as-q").oninput = (e) => { auditQuery = e.target.value.trim().toLowerCase(); page = 0; render(); };
+  $("#as-filter").onchange = (e) => { auditFilter = e.target.value; page = 0; render(); };
   render();
 };
 
@@ -240,6 +245,7 @@ Views.renderClients = async (view) => {
       <span id="cf-count" class="muted"></span>
     </div>
     <table class="grid">${CLIENT_TABLE_HEAD}<tbody id="client-rows"></tbody></table>
+    <div id="cf-pager"></div>
     <div class="modal-backdrop" id="nc-modal">
       <div class="modal">
         <h2>New client</h2>
@@ -257,17 +263,21 @@ Views.renderClients = async (view) => {
         </form>
       </div>
     </div>`;
+  let page = 0;
   const renderRows = () => {
     const list = matches();
-    $("#client-rows").innerHTML = list.map(clientRow).join("") ||
+    const pg = pageSlice(list, page); page = pg.p;
+    $("#client-rows").innerHTML = pg.rows.map(clientRow).join("") ||
       `<tr><td colspan="9" class="muted">No clients match.</td></tr>`;
+    $("#cf-pager").innerHTML = pagerHtml("cli", pg.p, pg.pages, list.length);
+    hookPager("cli", (d) => { page += d; renderRows(); });
     $("#cf-count").textContent = `${list.length} of ${clients.length}`;
     wireClientRows(view);
   };
-  $("#cf-q").oninput = (e) => { state.q = e.target.value.trim().toLowerCase(); renderRows(); };
-  $("#cf-status").onchange = (e) => { state.status = e.target.value; renderRows(); };
-  $("#cf-vendor").onchange = (e) => { state.vendor = e.target.value; renderRows(); };
-  $("#cf-rag").onchange = (e) => { state.rag = e.target.value; renderRows(); };
+  $("#cf-q").oninput = (e) => { state.q = e.target.value.trim().toLowerCase(); page = 0; renderRows(); };
+  $("#cf-status").onchange = (e) => { state.status = e.target.value; page = 0; renderRows(); };
+  $("#cf-vendor").onchange = (e) => { state.vendor = e.target.value; page = 0; renderRows(); };
+  $("#cf-rag").onchange = (e) => { state.rag = e.target.value; page = 0; renderRows(); };
   const modal = $("#nc-modal");
   $("#new-client").onclick = () => { modal.classList.add("open"); $("#nc-name").focus(); };
   $("#nc-cancel").onclick = () => modal.classList.remove("open");
@@ -577,18 +587,27 @@ Views.renderOpenItems = async (view) => {
     <td>${fmtDate(t.done_date)}</td>
     <td class="notes-cell">${latestNote(t)}</td></tr>`;
   const order = Object.keys(groups).sort();
-  view.innerHTML = `<div class="page-head"><h1>Open Items</h1>
-      <span class="muted">${open.length} open across ${order.length} owners</span></div>` +
-    (open.length ? order.map((who) => `
-      <h2>${esc(who)} <span class="muted">(${groups[who].length})</span></h2>
-      <table class="grid"><thead><tr>
-        <th>Client</th><th>Task</th><th>Status</th><th>Latest note</th></tr></thead>
-      <tbody>${groups[who].map(openRow).join("")}</tbody></table>`).join("")
-      : `<p class="muted">Nothing open — all work is done.</p>`) +
-    `<h2>Recently done <span class="muted">(last ${done.length})</span></h2>
-     <table class="grid"><thead><tr>
-       <th>Client</th><th>Task</th><th>Owner</th><th>Done</th><th>Note</th></tr></thead>
-     <tbody>${done.map(doneRow).join("") || `<tr><td colspan="5" class="muted">nothing yet</td></tr>`}</tbody></table>`;
+  // The open groups are small per owner; only the done history grows without
+  // bound (capped at 100 by the query), so that is the paginated half.
+  let donePage = 0;
+  const renderView = () => {
+    const pg = pageSlice(done, donePage); donePage = pg.p;
+    view.innerHTML = `<div class="page-head"><h1>Open Items</h1>
+        <span class="muted">${open.length} open across ${order.length} owners</span></div>` +
+      (open.length ? order.map((who) => `
+        <h2>${esc(who)} <span class="muted">(${groups[who].length})</span></h2>
+        <table class="grid"><thead><tr>
+          <th>Client</th><th>Task</th><th>Status</th><th>Latest note</th></tr></thead>
+        <tbody>${groups[who].map(openRow).join("")}</tbody></table>`).join("")
+        : `<p class="muted">Nothing open — all work is done.</p>`) +
+      `<h2>Recently done <span class="muted">(last ${done.length})</span></h2>
+       <table class="grid"><thead><tr>
+         <th>Client</th><th>Task</th><th>Owner</th><th>Done</th><th>Note</th></tr></thead>
+       <tbody>${pg.rows.map(doneRow).join("") || `<tr><td colspan="5" class="muted">nothing yet</td></tr>`}</tbody></table>` +
+      pagerHtml("done", pg.p, pg.pages, done.length);
+    hookPager("done", (d) => { donePage += d; renderView(); });
+  };
+  renderView();
 };
 Views.renderTeam = async (view) => {
   const [users, adminEmails] = await Promise.all([Store.listUsers(), Store.getAdminEmails()]);

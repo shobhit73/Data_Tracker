@@ -503,6 +503,14 @@ async function loadPlatformPanel(c) {
       ? `<div class="card" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:0">${items.join("")}</div>` : "";
   }
 
+  /* Third bar in the Client 360 hero, next to Onboarding and Audit. */
+  const heroHist = document.getElementById("hero-hist");
+  if (heroHist && b.hist) {
+    const hp = dpct(b.hist.received, b.hist.received + b.hist.pending) ?? 0;
+    heroHist.innerHTML = `<span class="muted">Historical</span> ` +
+      `<span class="bar"><span style="width:${hp}%"></span></span> <b>${hp}%</b>`;
+  }
+
   if (!el) return;
 
   const sysRows = s ? [

@@ -201,6 +201,20 @@ details.cgroup table.grid { border: none; border-radius: 0; }
 .refresh-status { font-size: 12px; }
 .refresh-status--error { color: var(--bad); }
 
+/* Client 360 revamp: work on the left, context on the right. The hero card
+   carries status + the three progress bars; below it a 2:1 grid that folds
+   to one column on narrow screens. */
+.c360 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px; align-items: start; }
+.c360-main, .c360-side { min-width: 0; }
+.c360-side > .card, .c360-side > div { margin-bottom: 14px; }
+.c360-hero { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+  justify-content: space-between; margin: 0 0 16px; }
+.c360-bars { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+.c360-bars .bar { width: 100px; }
+.c360-side .head-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+@media (max-width: 1100px) { .c360 { grid-template-columns: 1fr; } }
+
 /* The Data page head has three children now, and .page-head is
    justify-content: space-between -- which would strand the client count in
    the middle. Pushing the count right instead keeps it next to the button and

@@ -385,16 +385,46 @@ Views.renderClientDetail = async (view, id) => {
       <h1>${esc(c.dsp_name)} <span class="muted">${esc(c.short_code)}</span></h1>
       <a href="#${isAdmin ? "clients" : "my-clients"}">← back</a>
     </div>
-    <div style="margin:-6px 0 12px;display:flex;gap:8px;flex-wrap:wrap">
-      ${(() => { const d = daysUntil(c.tt_live_date);
-                 return d === null ? "" : `<span class="chip"><b>${countdownLabel(d)}</b></span>`; })()}
-      ${(() => { const m = (c.notes || "").match(/coverage:\s*(.+?)\s*\(last checked/i);
-                 return m ? `<span class="chip">Audit folder ${esc(m[1])}</span>` : ""; })()}
-      <span class="chip">Onboarding ${pct(tasksFor("onboarding"))}%</span>
-      <span class="chip">Audit ${pct(tasksFor("audit"))}%</span>
-      <span id="cd-chips" style="display:contents"></span>
+    <div class="card c360-hero">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${statusPill(c.status)}
+        ${c.rag ? `<span class="rag rag-${esc(c.rag)}" title="RAG ${esc(c.rag)}"></span>` : ""}
+        ${(() => { const d = daysUntil(c.tt_live_date);
+                   return d === null ? "" : `<span class="chip"><b>${countdownLabel(d)}</b></span>`; })()}
+        ${(() => { const m = (c.notes || "").match(/coverage:\s*(.+?)\s*\(last checked/i);
+                   return m ? `<span class="chip">Audit folder ${esc(m[1])}</span>` : ""; })()}
+        <span id="cd-chips" style="display:contents"></span>
+      </div>
+      <div class="c360-bars">
+        <span><span class="muted">Onboarding</span> <span class="bar"><span style="width:${pct(tasksFor("onboarding"))}%"></span></span> <b>${pct(tasksFor("onboarding"))}%</b></span>
+        ${isMigrating(c) ? `<span><span class="muted">Audit</span> <span class="bar"><span style="width:${pct(tasksFor("audit"))}%"></span></span> <b>${pct(tasksFor("audit"))}%</b></span>` : ""}
+        <span id="hero-hist"></span>
+      </div>
     </div>
-    <div class="card head-grid">
+    <div class="c360">
+    <div class="c360-main">
+    ${isMigrating(c) ? `<div class="tabbar">
+      <button id="tab-onb" class="active" type="button">Onboarding (${tasksFor("onboarding").length})</button>
+      <button id="tab-aud" type="button">Audit (${tasksFor("audit").length})</button>
+    </div>` : ""}
+    <div id="task-area"></div>
+    ${isAdmin ? `<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <input id="adhoc-title" placeholder="Ad-hoc task title" style="flex:1;min-width:180px">
+      <input id="adhoc-due" type="date">
+      <button id="adhoc-add" type="button">Add task</button>
+    </div>` : ""}
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Modules &amp; training</h2>
+      <table class="grid"><thead><tr><th>Module</th><th>Opted</th><th>Training done</th><th>Training date</th><th>Notes</th></tr></thead>
+      <tbody>${c.client_modules.slice()
+        .sort((a, b) => CONFIG.MODULES.indexOf(a.module) - CONFIG.MODULES.indexOf(b.module))
+        .map(moduleRow).join("")}</tbody></table>
+    </div>
+    </div>
+    <aside class="c360-side">
+    <div class="card">
+      <h2 style="margin-top:0">Details</h2>
+      <div class="head-grid">
       <label>Status <select id="c-status" ${dis}>
         ${CLIENT_STATUS_OPTS.map((s) => `<option ${s === c.status ? "selected" : ""}>${s}</option>`).join("")}
       </select></label>
@@ -408,25 +438,9 @@ Views.renderClientDetail = async (view, id) => {
       <label>TT live <input id="c-tt" type="date" value="${c.tt_live_date || ""}" ${dis}></label>
       <label>Payroll cutoff <input id="c-cutoff" type="date" value="${c.payroll_cutoff_date || ""}" ${dis}></label>
       <label>First pay <input id="c-pay" type="date" value="${c.first_pay_date || ""}" ${dis}></label>
+      </div>
     </div>
-    ${isMigrating(c) ? `<div class="tabbar">
-      <button id="tab-onb" class="active" type="button">Onboarding (${tasksFor("onboarding").length})</button>
-      <button id="tab-aud" type="button">Audit (${tasksFor("audit").length})</button>
-    </div>` : ""}
-    <div id="task-area"></div>
-    ${isAdmin ? `<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
-      <input id="adhoc-title" placeholder="Ad-hoc task title" style="flex:1;min-width:180px">
-      <input id="adhoc-due" type="date">
-      <button id="adhoc-add" type="button">Add task</button>
-    </div>` : ""}
-    <div id="cd-glance" style="margin-top:14px"></div>
-    <div class="card" style="margin-top:14px">
-      <h2 style="margin-top:0">Modules &amp; training</h2>
-      <table class="grid"><thead><tr><th>Module</th><th>Opted</th><th>Training done</th><th>Training date</th><th>Notes</th></tr></thead>
-      <tbody>${c.client_modules.slice()
-        .sort((a, b) => CONFIG.MODULES.indexOf(a.module) - CONFIG.MODULES.indexOf(b.module))
-        .map(moduleRow).join("")}</tbody></table>
-    </div>
+    <div id="cd-glance"></div>
     <div id="cd-platform" style="margin-top:14px"></div>
     <div class="card" style="margin-top:14px">
       <h2 style="margin-top:0">Company notes</h2>
@@ -447,6 +461,8 @@ Views.renderClientDetail = async (view, id) => {
           <button type="button" class="small secondary active" data-actf="0">All</button>
         </span></h2>
       <div id="act-list"></div>
+    </div>
+    </aside>
     </div>`;
 
   // Activity re-renders client-side on the 7d/30d/All picks - no refetch.

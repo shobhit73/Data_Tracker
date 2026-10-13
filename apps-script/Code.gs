@@ -671,6 +671,23 @@ function historicalFolderOf_(clientFolder) {
   return null;
 }
 
+/**
+ * Reports that may be matched in the client folder itself, not only inside
+ * Historical Data. Keyed by norm(report_name).
+ *
+ * The qualified-overtime report is pulled straight from the vendor portal and
+ * saved wherever the browser put it, so it lands loose in the client folder
+ * far more often than the others -- six clients have it there right now.
+ *
+ * This list stays SHORT on purpose. Opening the client folder to every report
+ * is what once marked a report Present off a census audit report, which is
+ * why the scan was narrowed to Historical Data to begin with.
+ */
+var ROOT_LEVEL_REPORTS = {
+  'qualifiedovertimewagesandtips': true,       // ADP
+  'estimatedqualifiedpremiumsreport': true     // Paycom's name for the same thing
+};
+
 function alternatives(spec) {
   return (spec && spec.length && Array.isArray(spec[0])) ? spec : [spec];
 }
@@ -864,29 +881,59 @@ function runScan(data) {
                ' files - scan stopped early, results may be incomplete');
     }
 
+    // The qualified-overtime report keeps landing loose in the client folder
+    // rather than inside Historical Data - six clients have it there today
+    // (BTKR, BDGT, EPSI, STAV, BECC, FLHB). Each of those happens to be
+    // Received anyway, because a person noticed; that noticing is the thing
+    // being replaced here, not a backlog.
+    //
+    // Only the client folder's OWN files, no recursion into its siblings, and
+    // only these reports may match there. The comment above is why: the
+    // matcher once marked a report Present off a census audit report when it
+    // could see the whole client folder.
+    var rootFiles = [];
+    try {
+      var rit = folder.getFiles();
+      while (rit.hasNext() && rootFiles.length < 300) rootFiles.push(rit.next().getName());
+    } catch (e) {
+      log.push('  could not list the client folder of ' + code + ' - ' + e.message);
+    }
+
     // Rows we could still fill for this client, with their catalog entry.
     var mine = data.status.filter(function (r) { return r.dsp_short_code === code; });
     var statusOf = {};
     mine.forEach(function (r) { statusOf[r.report_id + '|' + r.unit_label] = r.status; });
 
     // Walk files, not reports: each file goes to the single report it matches
-    // most specifically, one file per report-unit.
+    // most specifically, one file per report-unit. Historical Data first, so a
+    // copy filed correctly always wins over one left loose in the root.
+    var candidates = walked.files.map(function (f) { return { name: f, root: false }; })
+      .concat(rootFiles.map(function (f) { return { name: f, root: true }; }));
+
     var claimed = {};
     var recognised = {};
-    walked.files.forEach(function (fn) {
+    var fromRoot = {};
+    candidates.forEach(function (cand) {
+      var fn = cand.name;
       var best = null, bestScore = 0;
       mine.forEach(function (r) {
         var cat = catalogById[r.report_id];
         if (!cat || cat.vendor !== scope.vendor) return;
+        // The whole guard: a loose file is offered to these reports and
+        // nothing else.
+        if (cand.root && !ROOT_LEVEL_REPORTS[norm(cat.report_name)]) return;
         var kws = KEYWORDS[cat.vendor + '|' + cat.report_name];
         if (!kws || !unitInFilename(r.unit_label, fn)) return;
         var score = matchScore(kws, cat.report_name, fn);
         if (score > bestScore) { bestScore = score; best = r; }
       });
       if (!best) return;
-      recognised[fn] = true;
+      if (!cand.root) recognised[fn] = true;   // 'unmatched' stays about Historical Data
       var key = best.report_id + '|' + best.unit_label;
-      if (!claimed[key]) claimed[key] = { row: best, file: fn };
+      if (!claimed[key]) {
+        claimed[key] = { row: best, file: fn };
+        if (cand.root) fromRoot[key] = true;
+      }
     });
 
     Object.keys(claimed).forEach(function (key) {
@@ -903,7 +950,12 @@ function runScan(data) {
         vendor: scope.vendor,
         header: cat.header,
         fileName: c.file.split('/').pop(),
-        folderUrl: fid ? FOLDER_URL_PREFIX + fid : null
+        // A root hit must point at the client folder, not at a Historical
+        // Data subfolder that does not contain the file.
+        folderUrl: fromRoot[key]
+          ? FOLDER_URL_PREFIX + folder.getId()
+          : (fid ? FOLDER_URL_PREFIX + fid : null),
+        outsideHistorical: !!fromRoot[key]
       });
     });
 
@@ -915,9 +967,12 @@ function runScan(data) {
     scanned.push(code);
 
     var unmatched = walked.files.filter(function (f) { return !recognised[f]; });
+    var rootHits = Object.keys(fromRoot).length;
     log.push(code + ': ' + walked.files.length + ' file(s) in ' +
              HISTORICAL_FOLDER + ', ' + Object.keys(claimed).length +
-             ' report(s) matched, ' + unmatched.length + ' matched nothing');
+             ' report(s) matched, ' + unmatched.length + ' matched nothing' +
+             (rootHits ? ' (' + rootHits + ' found loose in the client folder, ' +
+                         'not in ' + HISTORICAL_FOLDER + ')' : ''));
 
     // 'unmatched' is the one worth a person's eye: the files are sitting in
     // the right folder and the pull is NOT the thing that is missing - the

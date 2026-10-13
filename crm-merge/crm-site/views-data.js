@@ -159,6 +159,61 @@ function hookPager(key, step) {
     b.onclick = () => step(b.dataset.pg.endsWith(":next") ? 1 : -1));
 }
 
+/* --- Date-range filter, shared like the pager. A preset select fills the
+   two date inputs; editing an input switches you to a custom range. A row
+   with NO date fails an active filter on purpose — "this week" should not
+   quietly include the undated. st is the caller's {from,to} object. --- */
+function localIso(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+    "-" + String(d.getDate()).padStart(2, "0");
+}
+function dfHtml(key, st) {
+  return `<span style="display:inline-flex;gap:6px;align-items:center">
+    <select data-dfp="${key}">
+      <option value="">All time</option>
+      <option value="thisweek">This week</option>
+      <option value="next7">Next 7 days</option>
+      <option value="thismonth">This month</option>
+      <option value="last30">Last 30 days</option>
+    </select>
+    <input type="date" data-dfrom="${key}" value="${st.from || ""}" style="max-width:150px">
+    <input type="date" data-dto="${key}" value="${st.to || ""}" style="max-width:150px">
+  </span>`;
+}
+function wireDateFilter(key, st, onChange) {
+  const sel = document.querySelector(`[data-dfp="${key}"]`);
+  const f = document.querySelector(`[data-dfrom="${key}"]`);
+  const t = document.querySelector(`[data-dto="${key}"]`);
+  if (!sel || !f || !t) return;
+  sel.onchange = () => {
+    const now = new Date();
+    let from = "", to = "";
+    if (sel.value === "thisweek") {
+      const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() || 7) - 1));
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      from = localIso(mon); to = localIso(sun);
+    } else if (sel.value === "next7") {
+      const e = new Date(now); e.setDate(now.getDate() + 7);
+      from = localIso(now); to = localIso(e);
+    } else if (sel.value === "thismonth") {
+      from = localIso(new Date(now.getFullYear(), now.getMonth(), 1));
+      to = localIso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    } else if (sel.value === "last30") {
+      const s = new Date(now); s.setDate(now.getDate() - 30);
+      from = localIso(s); to = localIso(now);
+    }
+    f.value = from; t.value = to; st.from = from; st.to = to; onChange();
+  };
+  f.onchange = () => { st.from = f.value; onChange(); };
+  t.onchange = () => { st.to = t.value; onChange(); };
+}
+function dfPass(dateStr, st) {
+  if (!st.from && !st.to) return true;
+  const d = String(dateStr || "").slice(0, 10);
+  if (!d) return false;
+  return (!st.from || d >= st.from) && (!st.to || d <= st.to);
+}
+
 Views.renderData = async (view, tab) => {
   if (!DATA_TABS.some(([k]) => k === tab)) tab = "api";
   view.innerHTML = `
@@ -198,11 +253,17 @@ async function apiTab() {
     byClient.get(r.fein).runs[r.module_key] = r;
   });
   const clients = [...byClient.values()].sort((a, b) => a.name.localeCompare(b.name));
-  let vendor = "all", gapsOnly = false;
+  let vendor = "all", gapsOnly = false, staleDays = 0;
   $("#data-extra").innerHTML = `
     <select id="api-vendor"><option value="all">All vendors</option>
       <option>ADP</option><option>Paycom</option></select>
-    <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="api-gaps"> gaps only</label>`;
+    <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="api-gaps"> gaps only</label>
+    <select id="api-stale" title="Show only clients with at least one module whose last OK run is older than this">
+      <option value="0">Any age</option>
+      <option value="30">OK &gt;30d old</option>
+      <option value="60">OK &gt;60d old</option>
+      <option value="90">OK &gt;90d old</option>
+    </select>`;
   // api_activity rebuilds this tab's numbers from prod; push_to_crm is what
   // makes them visible here rather than only in the DSP Ops project.
   $("#data-extra").appendChild(refreshControl(["api_activity", "push_to_crm"]));
@@ -219,13 +280,25 @@ async function apiTab() {
       dpill("✕", "pill-cancelled") + `</td>`;
   };
   const hasGap = (c) => API_MODULES.some(([m]) => !c.runs[m] || c.runs[m].run_status !== "ok");
+  // Stale = at least one module that HAS run ok, but not since the cutoff.
+  // Never-run modules are the gaps-only toggle's business, not this one's.
+  const isStale = (c, days) => {
+    const cut = new Date(); cut.setDate(cut.getDate() - days);
+    const iso = localIso(cut);
+    return API_MODULES.some(([m]) => {
+      const r = c.runs[m];
+      const okDate = r && (r.last_ok_date || (r.run_status === "ok" && r.last_run_date));
+      return okDate && String(okDate).slice(0, 10) < iso;
+    });
+  };
 
   let page = 0;
   const render = () => {
     const list = clients.filter((c) =>
       (!dataQ || c.name.toLowerCase().includes(dataQ)) &&
       (vendor === "all" || c.vendor === vendor) &&
-      (!gapsOnly || hasGap(c)));
+      (!gapsOnly || hasGap(c)) &&
+      (!staleDays || isStale(c, staleDays)));
     const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th>${API_MODULES.map(([, h]) => `<th>${h}</th>`).join("")}
@@ -240,6 +313,7 @@ async function apiTab() {
   render.reset = () => { page = 0; };
   $("#api-vendor").onchange = (e) => { vendor = e.target.value; page = 0; render(); };
   $("#api-gaps").onchange = (e) => { gapsOnly = e.target.checked; page = 0; render(); };
+  $("#api-stale").onchange = (e) => { staleDays = Number(e.target.value); page = 0; render(); };
   return render;
 }
 
@@ -320,7 +394,8 @@ async function coverageTab() {
 async function docsTab() {
   const [transfers, counts] = await Promise.all([
     Store.listDocumentTransfers(), Store.listDocumentCounts()]);
-  $("#data-extra").innerHTML = "";
+  const dft = { from: "", to: "" };   // transfer_date range
+  $("#data-extra").innerHTML = dfHtml("doct", dft);
   // Only the counted half: the transfer columns come from the completion
   // mails, which no prod query can rebuild.
   $("#data-extra").appendChild(refreshControl(["document_counts", "push_to_crm"]));
@@ -334,7 +409,9 @@ async function docsTab() {
 
   let pageT = 0, pageC = 0;
   const render = () => {
-    const t = transfers.filter((r) => !dataQ || r.client_name.toLowerCase().includes(dataQ));
+    const t = transfers.filter((r) =>
+      (!dataQ || r.client_name.toLowerCase().includes(dataQ)) &&
+      dfPass(r.transfer_date, dft));
     const c = counts.filter((r) =>
       !dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ));
     const pgT = pageSlice(t, pageT); pageT = pgT.p;
@@ -367,6 +444,7 @@ async function docsTab() {
     $("#data-count").textContent = `${t.length} transfers · ${c.length} clients counted`;
   };
   render.reset = () => { pageT = 0; pageC = 0; };
+  wireDateFilter("doct", dft, () => { pageT = 0; render(); });
   return render;
 }
 
@@ -517,11 +595,13 @@ async function histTab() {
   const gone = oos.filter((o) => !(o.reason || "").toLowerCase().includes("hold"));
   const pct = (c) => { const exp = c.received + c.pending; return exp ? Math.round(c.received / exp * 100) : 0; };
 
-  let show = "all";
+  let show = "all", scanBefore = "";
   $("#data-extra").innerHTML = `<select id="h-filter">
     <option value="all">All clients</option>
     <option value="open">Still collecting</option>
-    <option value="done">Complete</option></select>`;
+    <option value="done">Complete</option></select>
+    <label style="display:inline-flex;align-items:center;gap:5px" class="muted">scanned before
+      <input type="date" id="h-scanbefore" style="max-width:150px"></label>`;
 
   const oosBlock = (title, rows) => rows.length ? `<h2>${title}</h2>` +
     rows.map((o) => `<div class="act-row"><b>${esc(o.dsp_name || o.dsp_short_code)}</b>
@@ -532,7 +612,9 @@ async function histTab() {
   const render = () => {
     const list = clients.filter((c) =>
       (!dataQ || (c.dsp_name + " " + c.dsp_short_code).toLowerCase().includes(dataQ)) &&
-      (show === "all" || (show === "done" ? c.pending === 0 : c.pending > 0)))
+      (show === "all" || (show === "done" ? c.pending === 0 : c.pending > 0)) &&
+      // "scanned before X" is a staleness hunt: never-scanned counts as stale.
+      (!scanBefore || !c.last_scanned || String(c.last_scanned).slice(0, 10) < scanBefore))
       .sort((a, b) => pct(b) - pct(a) || a.dsp_name.localeCompare(b.dsp_name));
     const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = pg.rows.map((c) => {
@@ -559,5 +641,6 @@ async function histTab() {
   };
   render.reset = () => { page = 0; };
   $("#h-filter").onchange = (e) => { show = e.target.value; page = 0; render(); };
+  $("#h-scanbefore").onchange = (e) => { scanBefore = e.target.value; page = 0; render(); };
   return render;
 }

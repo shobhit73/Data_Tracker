@@ -226,12 +226,14 @@ Views.renderAuditStatus = async (view) => {
 
 Views.renderClients = async (view) => {
   const clients = await Store.listClients();
-  const state = { q: "", status: "", vendor: "", rag: "" };
+  const state = { q: "", status: "", vendor: "", rag: "", dfield: "tt_live_date" };
+  const dRange = { from: "", to: "" };  // applies to state.dfield
   const matches = () => clients.filter((c) =>
     (!state.q || (c.dsp_name + " " + c.short_code).toLowerCase().includes(state.q)) &&
     (!state.status || c.status === state.status) &&
     (!state.vendor || (c.vendor || "—") === state.vendor) &&
-    (!state.rag || (c.rag || "") === state.rag));
+    (!state.rag || (c.rag || "") === state.rag) &&
+    dfPass(c[state.dfield], dRange));
   view.innerHTML = `
     <div class="page-head"><h1>Clients</h1><button id="new-client" type="button">+ New client</button></div>
     <div class="filter-bar">
@@ -242,6 +244,12 @@ Views.renderClients = async (view) => {
         <option>ADP</option><option>Paycom</option><option>New</option><option value="—">Not set</option></select>
       <select id="cf-rag"><option value="">All RAG</option>
         <option value="G">Green</option><option value="A">Amber</option><option value="R">Red</option></select>
+      <select id="cf-dfield">
+        <option value="tt_live_date">TT live</option>
+        <option value="first_pay_date">First pay</option>
+        <option value="payroll_cutoff_date">Payroll cutoff</option>
+      </select>
+      ${dfHtml("cli", dRange)}
       <span id="cf-count" class="muted"></span>
     </div>
     <table class="grid">${CLIENT_TABLE_HEAD}<tbody id="client-rows"></tbody></table>
@@ -278,6 +286,8 @@ Views.renderClients = async (view) => {
   $("#cf-status").onchange = (e) => { state.status = e.target.value; page = 0; renderRows(); };
   $("#cf-vendor").onchange = (e) => { state.vendor = e.target.value; page = 0; renderRows(); };
   $("#cf-rag").onchange = (e) => { state.rag = e.target.value; page = 0; renderRows(); };
+  $("#cf-dfield").onchange = (e) => { state.dfield = e.target.value; page = 0; renderRows(); };
+  wireDateFilter("cli", dRange, () => { page = 0; renderRows(); });
   const modal = $("#nc-modal");
   $("#new-client").onclick = () => { modal.classList.add("open"); $("#nc-name").focus(); };
   $("#nc-cancel").onclick = () => modal.classList.remove("open");
@@ -430,18 +440,37 @@ Views.renderClientDetail = async (view, id) => {
       </div>
     </div>
     <div class="card" style="margin-top:14px">
-      <h2 style="margin-top:0">Activity</h2>
-      ${(() => {
-        if (!activity.length) return `<p class="muted">No activity recorded yet.</p>`;
-        const rowA = (a) => `<div class="act-row">
-            <span class="when">${a.created_at.slice(0, 16).replace("T", " ")}</span>
-            <b>${esc(a.actor?.name || "sync")}</b> ${clampHtml(a.detail)}</div>`;
-        const rest = activity.slice(8);
-        return activity.slice(0, 8).map(rowA).join("") + (rest.length
-          ? `<details><summary class="muted">${rest.length} older entries</summary>${rest.map(rowA).join("")}</details>`
-          : "");
-      })()}
+      <h2 style="margin-top:0">Activity
+        <span class="tabbar" style="display:inline-flex;margin:0 0 0 10px;gap:4px">
+          <button type="button" class="small secondary" data-actf="7">7d</button>
+          <button type="button" class="small secondary" data-actf="30">30d</button>
+          <button type="button" class="small secondary active" data-actf="0">All</button>
+        </span></h2>
+      <div id="act-list"></div>
     </div>`;
+
+  // Activity re-renders client-side on the 7d/30d/All picks - no refetch.
+  const renderActivity = (days) => {
+    let list = activity;
+    if (days) {
+      const cut = new Date(); cut.setDate(cut.getDate() - days);
+      const iso = cut.toISOString().slice(0, 10);
+      list = activity.filter((a) => String(a.created_at).slice(0, 10) >= iso);
+    }
+    const rowA = (a) => `<div class="act-row">
+        <span class="when">${a.created_at.slice(0, 16).replace("T", " ")}</span>
+        <b>${esc(a.actor?.name || "sync")}</b> ${clampHtml(a.detail)}</div>`;
+    const rest = list.slice(8);
+    $("#act-list").innerHTML = list.length
+      ? list.slice(0, 8).map(rowA).join("") + (rest.length
+          ? `<details><summary class="muted">${rest.length} older entries</summary>${rest.map(rowA).join("")}</details>` : "")
+      : `<p class="muted">${days ? `Nothing in the last ${days} days.` : "No activity recorded yet."}</p>`;
+  };
+  view.querySelectorAll("[data-actf]").forEach((b) => b.onclick = () => {
+    view.querySelectorAll("[data-actf]").forEach((x) => x.classList.toggle("active", x === b));
+    renderActivity(Number(b.dataset.actf));
+  });
+  renderActivity(0);
 
   // Fills #cd-platform from the read-only reporting tables (views-data.js).
   // Fire-and-forget: the core page never waits on it and never breaks with it.
@@ -573,8 +602,6 @@ Views.renderClientDetail = async (view, id) => {
 
 Views.renderOpenItems = async (view) => {
   const [open, done] = await Promise.all([Store.listOpenTasks(), Store.listDoneTasks()]);
-  const groups = {};
-  open.forEach((t) => { const k = effectiveOwnerLabel(t, t.client); (groups[k] = groups[k] || []).push(t); });
   const openRow = (t) => `<tr>
     <td><a href="#client/${t.client_id}">${esc(t.client?.dsp_name)}</a></td>
     <td>${esc(t.title)}</td>
@@ -586,26 +613,38 @@ Views.renderOpenItems = async (view) => {
     <td>${esc(effectiveOwnerLabel(t, t.client))}</td>
     <td>${fmtDate(t.done_date)}</td>
     <td class="notes-cell">${latestNote(t)}</td></tr>`;
-  const order = Object.keys(groups).sort();
   // The open groups are small per owner; only the done history grows without
   // bound (capped at 100 by the query), so that is the paginated half.
-  let donePage = 0;
+  let donePage = 0, overdueOnly = false;
+  const doneRange = { from: "", to: "" };
+  const today = new Date().toISOString().slice(0, 10);
   const renderView = () => {
-    const pg = pageSlice(done, donePage); donePage = pg.p;
+    const shownOpen = overdueOnly
+      ? open.filter((t) => t.due_date && t.due_date < today && t.status !== "Done")
+      : open;
+    const groups = {};
+    shownOpen.forEach((t) => { const k = effectiveOwnerLabel(t, t.client); (groups[k] = groups[k] || []).push(t); });
+    const order = Object.keys(groups).sort();
+    const shownDone = done.filter((t) => dfPass(t.done_date, doneRange));
+    const pg = pageSlice(shownDone, donePage); donePage = pg.p;
     view.innerHTML = `<div class="page-head"><h1>Open Items</h1>
-        <span class="muted">${open.length} open across ${order.length} owners</span></div>` +
-      (open.length ? order.map((who) => `
+        <span class="muted">${shownOpen.length} open across ${order.length} owners</span></div>
+      <div class="filter-bar"><label style="display:inline-flex;align-items:center;gap:5px">
+        <input type="checkbox" id="oi-overdue" ${overdueOnly ? "checked" : ""}> overdue only (dated ad-hoc tasks)</label></div>` +
+      (shownOpen.length ? order.map((who) => `
         <h2>${esc(who)} <span class="muted">(${groups[who].length})</span></h2>
         <table class="grid"><thead><tr>
           <th>Client</th><th>Task</th><th>Status</th><th>Latest note</th></tr></thead>
         <tbody>${groups[who].map(openRow).join("")}</tbody></table>`).join("")
-        : `<p class="muted">Nothing open — all work is done.</p>`) +
-      `<h2>Recently done <span class="muted">(last ${done.length})</span></h2>
+        : `<p class="muted">${overdueOnly ? "Nothing overdue." : "Nothing open — all work is done."}</p>`) +
+      `<h2>Recently done <span class="muted">(${shownDone.length} of last ${done.length})</span> ${dfHtml("done", doneRange)}</h2>
        <table class="grid"><thead><tr>
          <th>Client</th><th>Task</th><th>Owner</th><th>Done</th><th>Note</th></tr></thead>
-       <tbody>${pg.rows.map(doneRow).join("") || `<tr><td colspan="5" class="muted">nothing yet</td></tr>`}</tbody></table>` +
-      pagerHtml("done", pg.p, pg.pages, done.length);
+       <tbody>${pg.rows.map(doneRow).join("") || `<tr><td colspan="5" class="muted">nothing in this range</td></tr>`}</tbody></table>` +
+      pagerHtml("done", pg.p, pg.pages, shownDone.length);
     hookPager("done", (d) => { donePage += d; renderView(); });
+    $("#oi-overdue").onchange = (e) => { overdueOnly = e.target.checked; renderView(); };
+    wireDateFilter("done", doneRange, () => { donePage = 0; renderView(); });
   };
   renderView();
 };

@@ -2919,6 +2919,308 @@ function applyHistoricalSync() {
 
 
 /* ======================================================================
+ * DOC MAILS — the 'Document Upload Status' thread -> document_transfer
+ *
+ * This was Step 4 of the 12:30 routine, the last piece of it that still
+ * needed anything reading Gmail. The team reports each client's document
+ * upload in one long mail thread; this turns those reports into rows the
+ * dashboard's Documents view can show.
+ *
+ * THE RULE THE WHOLE STEP LIVES BY: only record numbers a message actually
+ * states. The clean-success mails ("All documents have been uploaded
+ * successfully of <client> to UZIO") carry no counts, and their rows carry
+ * NULLs — never a guess. A mail the parser cannot read with confidence (the
+ * Spelman-style partial-failure prose, with its hand-counted breakdown) is
+ * LOGGED FOR A HUMAN and left out, because attributing free-form failure
+ * counts to columns is exactly the judgement call that used to need a person.
+ *
+ * INSERT-ONLY. The table is sometimes hand-edited (corrected figures, notes
+ * typed in from later threads), so an existing client's row is never
+ * rewritten off a newer mail — the mail is logged instead. source_message_id
+ * is the idempotency key: a message whose id is already on any row is
+ * skipped, so re-runs can never double-insert.
+ *
+ * Needs the gmail.readonly scope in appsscript.json; reading the mail is all
+ * it does there. Reuses the DASH_* script properties — no new secret.
+ * ====================================================================== */
+
+var DOC_MAIL_SUBJECT = 'Document Upload Status';
+// If document_transfer were ever empty, how far back to read. With rows
+// present the max transfer_date bounds the search instead.
+var DOC_MAIL_DEFAULT_WINDOW = 'newer_than:90d';
+// The thread is years long; the date filter keeps this from mattering, but a
+// runaway search must not spend the 6-minute budget on old mail.
+var DOC_MAIL_MAX_MESSAGES = 200;
+
+/**
+ * The new content of a mail, without the quoted history under it.
+ *
+ * A reply's getPlainBody carries the whole thread below "On ... wrote:", so
+ * without this an acknowledgement ("Thank you for the update.") re-parses the
+ * mail it quotes and re-imports it under the acknowledgement's own message id
+ * — which the id-dedupe cannot catch, because the id really is new.
+ */
+function dtStripQuoted_(body) {
+  var text = String(body || '');
+  [/^\s*On .{0,200}wrote:\s*$/m,            // Gmail reply header
+   /^\s*From:\s.*$/m,                        // Outlook reply header
+   /^\s*-{2,}\s*(Original|Forwarded) Message/im,
+   /^\s*_{10,}\s*$/m
+  ].forEach(function (re) {
+    var m = re.exec(text);
+    if (m) text = text.slice(0, m.index);
+  });
+  // '>'-quoted lines that survive (inline quoting, or a reply header the
+  // patterns above did not recognise).
+  return text.split('\n').filter(function (l) {
+    return l.charAt(0) !== '>';
+  }).join('\n').trim();
+}
+
+/**
+ * Parse one mail body into a transfer, or null.
+ *
+ * The three shapes are the three the thread has actually used (quoted
+ * verbatim in scripts/populate_documents_from_mail*.py):
+ *   A  "All documents have been uploaded successfully of <client> to UZIO."
+ *   B  "The documents for <client> have been uploaded."
+ *   C  "<client> documents have been uploaded successfully today" /
+ *      "<client> Documents are uploaded successfully without any errors"
+ *
+ * Counts are taken only where stated ("943 documents", "869 not uploaded");
+ * "without any errors" / "no failures" is itself a statement and records
+ * failed = 0. Everything else — including the whole message when no shape
+ * matches — stays out of the table.
+ */
+function dtParseDocMail_(body) {
+  var text = dtStripQuoted_(body);
+  if (!text) return null;
+  var flat = text.replace(/\s+/g, ' ').trim();
+
+  var client = '', m;
+
+  // A
+  m = /all\s+(?:the\s+)?documents?\s+(?:have\s+been|are|were)\s+uploaded\s+successfully\s+(?:of|for)\s+(.+?)\s+(?:to|into|in)\s+uzio/i.exec(flat);
+  if (m) client = m[1];
+
+  // B
+  if (!client) {
+    m = /the\s+documents?\s+(?:for|of)\s+(.+?)\s+have\s+been\s+uploaded/i.exec(flat);
+    if (m) client = m[1];
+  }
+
+  // C — the client name leads the sentence, so cut anything before the last
+  // sentence boundary ("Hi Team, InnovDel documents..." must not keep the
+  // greeting) and refuse pronouns that would otherwise capture ("All
+  // documents are uploaded successfully" names nobody).
+  if (!client) {
+    m = /([A-Za-z][A-Za-z0-9&.,'()\/\- ]{1,60}?)\s+documents?\s+(?:have\s+been|are|were)\s+uploaded\s+successfully/i.exec(flat);
+    if (m) {
+      client = m[1].replace(/^.*[.,;:!?]\s*/, '');
+      var notAName = { all: 1, the: 1, these: 1, those: 1, client: 1,
+                       its: 1, their: 1, your: 1, our: 1 };
+      if (notAName[norm(client)]) client = '';
+    }
+  }
+
+  if (!client) return null;
+  client = client.replace(/^the\s+/i, '').trim();
+  if (!client) return null;
+
+  var quote = m[0].length > 180 ? m[0].slice(0, 177) + '...' : m[0];
+
+  var total = null, failed = null, n;
+  n = /([\d][\d,]{0,11})\s+(?:documents?|files)\b/.exec(flat) ||
+      /total\s+(?:documents?|files)?\s*[:\-]?\s*([\d][\d,]{0,11})\b/i.exec(flat);
+  if (n) total = parseInt(n[1].replace(/,/g, ''), 10);
+  n = /([\d][\d,]{0,11})\s+(?:not\s+uploaded|failed)\b/i.exec(flat) ||
+      /failed\s*[:\-]?\s*([\d][\d,]{0,11})\b/i.exec(flat);
+  if (n) failed = parseInt(n[1].replace(/,/g, ''), 10);
+  if (failed === null && /without\s+any\s+errors?|no\s+failures?|no\s+errors?/i.test(flat)) {
+    failed = 0;
+  }
+
+  return {
+    client_name: client,
+    status: failed > 0 ? 'Completed with issues' : 'Complete',
+    total_docs: total,
+    failed_docs: failed,
+    quote: quote
+  };
+}
+
+/**
+ * The spelling the dashboard already uses for this client, if it has one.
+ *
+ * The mails say 'CDC Logistics'; the table says 'CDC LOGISTICS, LLC', because
+ * the curated imports aligned names with audit_coverage so the two tables
+ * join. Exact normalised match first, then prefix containment either way
+ * (same rule as trackerLookup_). Two different candidates claiming the name
+ * is a wrong merge waiting to happen, so ambiguity keeps the mail's own
+ * spelling — a new row under a near-duplicate name is visible and fixable,
+ * a silently-merged wrong client is not.
+ */
+function dtCanonicalName_(name, candidates) {
+  var n = norm(name);
+  if (!n) return name;
+  var i, c, hit = null;
+  for (i = 0; i < candidates.length; i++) {
+    if (norm(candidates[i]) === n) return candidates[i];
+  }
+  for (i = 0; i < candidates.length; i++) {
+    c = norm(candidates[i]);
+    if (n.length > 3 && c.length > 3 &&
+        (c.indexOf(n) === 0 || n.indexOf(c) === 0)) {
+      if (hit && norm(hit) !== c) return name;   // ambiguous
+      hit = candidates[i];
+    }
+  }
+  return hit || name;
+}
+
+/**
+ * Read the 'Document Upload Status' mails and insert what they report
+ * (was Step 4 of the dsp-ops-refresh routine, the last Gmail-dependent one).
+ */
+function syncDocumentTransferMails_(dryRun) {
+  var log = [];
+  var conf = sbConf_('DASH');
+  if (!conf) {
+    log.push('Doc-mail sync skipped: DASH_URL / DASH_SERVICE_KEY not set.');
+    return log;
+  }
+
+  var existing = sbSelectAll_(conf, 'document_transfer');
+  var seenMsg = {}, rowByName = {}, names = [], maxDate = '';
+  existing.forEach(function (r) {
+    if (r.source_message_id) seenMsg[r.source_message_id] = true;
+    rowByName[norm(r.client_name)] = r;
+    names.push(r.client_name);
+    var d = String(r.transfer_date || '').slice(0, 10);
+    if (d > maxDate) maxDate = d;
+  });
+
+  // audit_coverage carries the canonical client spellings the dashboard joins
+  // on; a client's first-ever transfer should land under that name, not the
+  // mail's shorthand. Failing to read it only narrows the matching.
+  try {
+    var have = {};
+    names.forEach(function (x) { have[norm(x)] = true; });
+    sbSelectAll_(conf, 'audit_coverage').forEach(function (r) {
+      var cn = String(r.client_name || '').trim();
+      if (cn && !have[norm(cn)]) { have[norm(cn)] = true; names.push(cn); }
+    });
+  } catch (e) {
+    log.push('  (audit_coverage unreadable, canonical names limited: ' + e.message + ')');
+  }
+
+  // The max transfer_date bounds the search; message-id dedupe is what makes
+  // re-reading a boundary day safe. The historical rows imported by the old
+  // populate scripts carry the THREAD id as their source_message_id, not a
+  // message id — the date bound is what keeps those messages from re-parsing.
+  var query = 'subject:"' + DOC_MAIL_SUBJECT + '" ' +
+    (maxDate ? 'after:' + maxDate.replace(/-/g, '/') : DOC_MAIL_DEFAULT_WINDOW);
+  var threads = GmailApp.search(query, 0, 50);
+  log.push('Doc mails: ' + threads.length + ' thread(s) for [' + query + ']');
+
+  var inserts = [], skipped = 0, kept = [], humans = [], count = 0;
+  threads.forEach(function (th) {
+    th.getMessages().forEach(function (msg) {
+      if (count >= DOC_MAIL_MAX_MESSAGES) return;
+      count++;
+
+      var id = msg.getId();
+      if (seenMsg[id]) { skipped++; return; }
+      var when = Utilities.formatDate(msg.getDate(), 'Asia/Kolkata', 'yyyy-MM-dd');
+      if (maxDate && when < maxDate) { skipped++; return; }
+
+      var body;
+      try {
+        body = msg.getPlainBody();
+      } catch (e) {
+        log.push('  could not read message ' + id + ': ' + e.message);
+        return;
+      }
+
+      var parsed = dtParseDocMail_(body);
+      if (!parsed) {
+        // A mail about uploads that no shape matched is the Spelman case:
+        // real figures, free-form prose. That is a person's job, so it is
+        // surfaced, never guessed at. Plain acknowledgements stay quiet.
+        var t = dtStripQuoted_(body).replace(/\s+/g, ' ');
+        if (/document/i.test(t) && /upload/i.test(t) && !/^thank/i.test(t)) {
+          humans.push(when + ' ' + msg.getFrom() + ': "' + t.slice(0, 120) + '"');
+        }
+        return;
+      }
+
+      var client = dtCanonicalName_(parsed.client_name, names);
+      var cur = rowByName[norm(client)];
+      if (cur) {
+        // Insert-only: the row may be hand-edited, so a newer mail about the
+        // same client is reported, not applied.
+        if (cur.source_message_id === id) { skipped++; return; }
+        kept.push(client + ' (mail of ' + when + ' parsed, existing row kept as is)');
+        return;
+      }
+
+      var noCounts = parsed.total_docs === null && parsed.failed_docs === null;
+      var row = {
+        client_name: client,
+        status: parsed.status,
+        transfer_date: when,
+        total_docs: parsed.total_docs,
+        failed_docs: parsed.failed_docs,
+        notes: 'Imported by Apps Script from the "' + DOC_MAIL_SUBJECT +
+               '" thread. Reported on ' + when + ' as "' + parsed.quote + '".' +
+               (noCounts ? ' The mail states no document counts, so total/failed' +
+                           ' are left blank rather than estimated.' : ''),
+        source_message_id: id
+      };
+      inserts.push(row);
+      // So a second mail about the same client in one run cannot double-insert.
+      rowByName[norm(client)] = row;
+      names.push(client);
+    });
+  });
+
+  log.push('  ' + inserts.length + ' new transfer(s), ' + skipped +
+           ' message(s) already imported or before the window, ' +
+           humans.length + ' for a human');
+  inserts.forEach(function (r) {
+    log.push('  + ' + r.client_name + ' ' + r.transfer_date +
+             (r.total_docs !== null || r.failed_docs !== null
+                ? ' (' + r.total_docs + ' docs, ' + r.failed_docs + ' failed)' : ''));
+  });
+  kept.forEach(function (k) { log.push('  = ' + k); });
+  humans.forEach(function (h) { log.push('  ? unparsed, needs a human: ' + h); });
+
+  if (!inserts.length) return log;
+  if (dryRun) {
+    log.push('DRY RUN - ' + inserts.length + ' row(s) would be written, nothing sent.');
+    return log;
+  }
+  sbFetch_(conf, 'post', 'document_transfer', inserts);
+  log.push('Wrote ' + inserts.length + ' row(s) to document_transfer.');
+  return log;
+}
+
+/** Dry run: what the doc-mail sync would insert, writing nothing. */
+function previewDocumentTransferMails() {
+  var log = syncDocumentTransferMails_(true);
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+/** Apply it. Read previewDocumentTransferMails first. */
+function applyDocumentTransferMails() {
+  var log = syncDocumentTransferMails_(false);
+  log.forEach(function (l) { console.log(l); });
+  return log.join('\n');
+}
+
+
+/* ======================================================================
  * SHRUTI'S TRACKER -> client_overview  (was Step 2 of the 12:30 routine)
  *
  * Port of scripts/populate_overview_from_shruti.py. The Python version got
@@ -3469,6 +3771,15 @@ function runDaily() {
     syncHistoricalToDashboard_(false).forEach(function (l) { console.log(l); });
   } catch (e) {
     console.log('DASHBOARD HISTORICAL SYNC FAILED: ' + e.message);
+  }
+
+  // Step 4, the routine's last Gmail-dependent piece: the 'Document Upload
+  // Status' mails -> document_transfer. Before the data-view push below, so
+  // the CRM's copy carries today's transfers today.
+  try {
+    syncDocumentTransferMails_(false).forEach(function (l) { console.log(l); });
+  } catch (e) {
+    console.log('DOC MAILS SYNC FAILED: ' + e.message);
   }
 
   // Keep this last: it copies whatever is in our Supabase at this moment, so

@@ -160,6 +160,12 @@ function journeyHtml(c, opts = {}) {
     <div class="journey-foot">${pace}${next}</div>`;
 }
 
+/* Only Drive links are ever rendered as a link: the field is free text, and a
+   javascript: or look-alike URL must not become a clickable button. */
+function isDriveUrl(u) {
+  return /^https:\/\/drive\.google\.com\/[^\s"'<>]*$/.test(String(u || "").trim());
+}
+
 function clientRow(c) {
   return `<tr class="rowlink" data-id="${c.id}">
     <td><b>${esc(c.dsp_name)}</b></td><td>${esc(c.short_code)}</td><td>${esc(c.vendor || "—")}</td>
@@ -523,7 +529,13 @@ Views.renderClientDetail = async (view, id) => {
   view.innerHTML = `
     <div class="page-head">
       <h1>${esc(c.dsp_name)} <span class="muted">${esc(c.short_code)}</span></h1>
-      <a href="#${isAdmin ? "clients" : "my-clients"}">← back</a>
+      <span style="display:flex;gap:14px;align-items:center">
+        ${isDriveUrl(c.drive_folder_url)
+          ? `<a class="btn-refresh" href="${esc(c.drive_folder_url)}" target="_blank" rel="noopener noreferrer"
+               title="Open this client's folder under Amazon DSP in Google Drive">📁 Drive folder</a>`
+          : isAdmin ? `<span class="muted" style="font-size:12px">No Drive folder linked — add it under Details</span>` : ""}
+        <a href="#${isAdmin ? "clients" : "my-clients"}">← back</a>
+      </span>
     </div>
     <div class="card c360-hero">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -574,6 +586,9 @@ Views.renderClientDetail = async (view, id) => {
       <label>TT live <input id="c-tt" type="date" value="${c.tt_live_date || ""}" ${dis}></label>
       <label>Payroll cutoff <input id="c-cutoff" type="date" value="${c.payroll_cutoff_date || ""}" ${dis}></label>
       <label>First pay <input id="c-pay" type="date" value="${c.first_pay_date || ""}" ${dis}></label>
+      <label style="grid-column:1/-1">Drive folder
+        <input id="c-drive" type="url" placeholder="https://drive.google.com/drive/folders/…"
+          value="${esc(c.drive_folder_url || "")}" style="max-width:none" ${dis}></label>
       </div>
     </div>
     <div id="cd-glance"></div>
@@ -720,6 +735,15 @@ Views.renderClientDetail = async (view, id) => {
     bind("#c-status", "status"); bind("#c-rag", "rag"); bind("#c-vendor", "vendor");
     bind("#c-imp", "implementor_id"); bind("#c-tt", "tt_live_date");
     bind("#c-cutoff", "payroll_cutoff_date"); bind("#c-pay", "first_pay_date");
+    $("#c-drive").onchange = (e) => {
+      const v = e.target.value.trim();
+      if (v && !isDriveUrl(v)) { toast("Paste a Google Drive link (https://drive.google.com/…)"); e.target.value = c.drive_folder_url || ""; return; }
+      const prev = c.drive_folder_url;
+      saveChange(v ? "Drive folder linked" : "Drive folder link removed",
+        () => Store.updateClient(id, { drive_folder_url: v || null }),
+        () => Store.updateClient(id, { drive_folder_url: prev }),
+        reload);
+    };
 
     view.querySelectorAll("tr[data-mod]").forEach((row) => {
       const mid = Number(row.dataset.mod);

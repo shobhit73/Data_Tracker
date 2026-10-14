@@ -185,6 +185,7 @@ window.Store = (() => {
   const listHistClients      = () => listReport("hist_clients", "dsp_name");
   const listHistStatus       = () => listReport("hist_status", "dsp_short_code");
   const listHistOutOfScope   = () => listReport("hist_out_of_scope", "dsp_name");
+  const listEwa              = () => listReport("client_ewa", "company_name");
 
   /* Everything the Client 360 platform panel needs, keyed by the CRM client's
      short code. Reads warn instead of failing so a reporting table that does
@@ -276,6 +277,6 @@ window.Store = (() => {
            listOpenTasks, listDoneTasks, getTeams, listLastActivity, getActivity,
            listApiActivity, listPayrollHealth, listDataCoverage,
            listDocumentTransfers, listDocumentCounts,
-           listHistClients, listHistStatus, listHistOutOfScope,
+           listHistClients, listHistStatus, listHistOutOfScope, listEwa,
            getPlatformBundle };
 })();

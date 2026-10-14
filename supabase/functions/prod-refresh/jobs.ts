@@ -1461,6 +1461,101 @@ async function taskEvidence(ctx: JobCtx): Promise<JobResult> {
   return { job: 'task_evidence', ok: true, log, queryIds: [] };
 }
 
+/* ------------------------------------------------------------- ewa_status */
+
+/**
+ * Earned-wage-access providers per live client: DailyPay and ZayZoon are
+ * flags on employer_organization; PayActiv has no flag and is recognised by
+ * its SFTP report (destination path or description says payactiv), with the
+ * report's scheduler status and file-delivery start date. Query from Sanya
+ * (14 Oct 2026), unchanged; only the Amazon filter is applied here.
+ *
+ * Written straight into the CRM's client_ewa (full replace): nothing on the
+ * dashboard side reads it, so a copy in our project would only be a second
+ * thing to keep in step.
+ */
+const EWA_SQL = `
+with emp as (
+  select eo.ein, eo.company_name, eo.client_code, eo.company_identifier, eo.live_status, eo.exchange_id,
+         eo.zayzoon_sync_enabled, eo.zayzoon_sftp_start_date,
+         eo.dailypay_sync_enabled, eo.dailypay_sftp_start_date
+  from employer_organization eo
+  where eo.deleted = 0 and eo.live_status in ('LIVE','LIVE_PARTIAL')
+),
+pa as (
+  select c.criteria_value as ein,
+         string_agg(distinct coalesce(se.status, 'NO_SCHEDULE'), ',') as payactiv_schedule,
+         max(c2.criteria_value) as payactiv_start
+  from sftp_report sr
+  join sftp_report_criteria c on c.sftp_report_id = sr.id and c.deleted = 0 and c.criteria_key = 'employerOrgEin'
+  left join sftp_report_criteria c2 on c2.sftp_report_id = sr.id and c2.deleted = 0 and c2.criteria_key = 'fileDeliveryStartDate'
+  left join scheduler_events se on se.payload = sr.id::text and se.deleted = 0
+  where sr.deleted = 0
+    and (lower(coalesce(sr.destination_s3_path,'')) like '%payactiv%' or lower(sr.report_description) like '%payactiv%')
+  group by c.criteria_value
+)
+select d.client_code as dsp_code, d.company_name, d.live_status,
+       case when d.dailypay_sync_enabled = 1 then 'YES' else '' end as dailypay,
+       to_char(d.dailypay_sftp_start_date, 'YYYY-MM-DD') as dailypay_start,
+       case when d.zayzoon_sync_enabled = 1 then 'YES' else '' end as zayzoon,
+       to_char(d.zayzoon_sftp_start_date, 'YYYY-MM-DD') as zayzoon_start,
+       case when pa.ein is not null then 'YES' else '' end as payactiv,
+       pa.payactiv_schedule, pa.payactiv_start,
+       d.company_identifier, d.exchange_id
+from emp d
+left join pa on pa.ein = d.ein
+where (d.client_code is not null and d.client_code <> '')
+   or d.dailypay_sync_enabled = 1 or d.zayzoon_sync_enabled = 1 or pa.ein is not null
+order by d.client_code nulls last, d.company_name`;
+
+/** "02/22/2026" (the criteria value's format) or ISO -> ISO; anything else -> null. */
+function isoDate(v: unknown): string | null {
+  const s = String(v ?? '').trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : null;
+}
+
+async function ewaStatus(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+  if (!ctx.crm) throw new Error('CRM_URL / CRM_SERVICE_KEY are not set on this function');
+  const crm = { dashUrl: ctx.crm.url, dashKey: ctx.crm.key, creds: ctx.creds, dryRun: ctx.dryRun } as JobCtx;
+
+  const { rows, queryIds, tookMs } = await prodQuery(EWA_SQL, ctx.creds);
+  const amz = rows.filter((r) => r.exchange_id === AMAZON_EXCHANGE);
+  log.push(`prod returned ${rows.length} live employer(s) in ${tookMs}ms; ${amz.length} on the Amazon exchange`);
+  const today = new Date().toISOString().slice(0, 10);
+  const send = amz.map((r) => ({
+    dsp_short_code: String(r.dsp_code ?? '').trim() || null,
+    company_name: r.company_name ?? null,
+    live_status: r.live_status ?? null,
+    dailypay: r.dailypay === 'YES',
+    dailypay_start: isoDate(r.dailypay_start),
+    zayzoon: r.zayzoon === 'YES',
+    zayzoon_start: isoDate(r.zayzoon_start),
+    payactiv: r.payactiv === 'YES',
+    payactiv_schedule: r.payactiv_schedule ?? null,
+    payactiv_start: isoDate(r.payactiv_start),
+    company_identifier: r.company_identifier ?? null,
+    checked_date: today,
+  }));
+  const n = (k: 'dailypay' | 'zayzoon' | 'payactiv') => send.filter((r) => r[k]).length;
+  log.push(`DailyPay ${n('dailypay')} · ZayZoon ${n('zayzoon')} · PayActiv ${n('payactiv')}`);
+  const unparsed = amz.filter((r) => r.payactiv_start && !isoDate(r.payactiv_start));
+  if (unparsed.length) log.push(`! ${unparsed.length} PayActiv start date(s) in an unknown format, stored blank`);
+
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - ${send.length} row(s) would replace client_ewa in the CRM.`);
+    return { job: 'ewa_status', ok: true, log, queryIds };
+  }
+  if (!send.length) throw new Error('no Amazon rows came back - refusing to empty client_ewa');
+  await dash(crm, 'DELETE', 'client_ewa?id=gt.0');
+  for (let i = 0; i < send.length; i += 500) await dash(crm, 'POST', 'client_ewa', send.slice(i, i + 500));
+  log.push(`replaced client_ewa in the CRM with ${send.length} row(s)`);
+  return { job: 'ewa_status', ok: true, log, queryIds };
+}
+
 /* ------------------------------------------------------------- the registry */
 
 export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
@@ -1474,6 +1569,8 @@ export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
   system_activity: systemActivity,
   payroll_health: payrollHealth,
   api_activity: apiActivity,
+  // Writes the CRM directly, so it does not depend on push_to_crm's order.
+  ewa_status: ewaStatus,
   // Last: it copies whatever is in our Supabase at that moment, so anything
   // written after it would not reach the CRM until Apps Script's 17:30 run.
   push_to_crm: pushToCrm,

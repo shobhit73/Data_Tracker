@@ -10,6 +10,7 @@ const DATA_TABS = [
   ["coverage", "Data Coverage"],
   ["docs", "Documents"],
   ["hist", "Historical"],
+  ["ewa", "EWA"],
 ];
 
 /* Onboarding-API modules in the order they are actually run, not alphabetical. */
@@ -120,7 +121,7 @@ function refreshControl(batches, label) {
       at the moment it runs */
 const REFRESH_EVERYTHING = [
   ["backfill_fein", "work_locations", "data_coverage",
-   "document_counts", "system_activity", "payroll_health", "api_activity"],
+   "document_counts", "system_activity", "payroll_health", "api_activity", "ewa_status"],
   ["load_history"],
   ["push_to_crm"],
   // Evidence-based task flips, after the fresh copy has landed here.
@@ -239,7 +240,7 @@ Views.renderData = async (view, tab) => {
     renderBody();
   };
 
-  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab };
+  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab, ewa: ewaTab };
   renderBody = await renderers[tab]();
   renderBody();
 };
@@ -739,6 +740,63 @@ async function docsTab() {
   wireDateFilter("doct", dft, () => { pageT = 0; render(); });
   $("#dt-status").onchange = (e) => { tStatus = e.target.value; pageT = 0; render(); };
   $("#dt-failed").onchange = (e) => { failedOnly = e.target.checked; pageT = 0; render(); };
+  return render;
+}
+
+/* --- EWA: which earned-wage-access provider each live DSP is wired to
+   (DailyPay / ZayZoon flags, PayActiv SFTP report), straight from prod via
+   the ewa_status job. Asked for by Sanya, 14 Oct 2026. --- */
+async function ewaTab() {
+  const rows = await Store.listEwa();
+  const PROVIDERS = [["dailypay", "DailyPay"], ["zayzoon", "ZayZoon"], ["payactiv", "PayActiv"]];
+  const f = { prov: "", status: "" };
+  const dr = { from: "", to: "" };   // provider start date
+  const statuses = [...new Set(rows.map((r) => r.live_status).filter(Boolean))].sort();
+  $("#data-extra").innerHTML = `
+    <select id="ewa-prov"><option value="">All clients</option>
+      <option value="any">Has any EWA provider</option>
+      ${PROVIDERS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}
+      <option value="none">No EWA provider</option></select>
+    <select id="ewa-status"><option value="">Any live status</option>
+      ${statuses.map((s) => `<option>${esc(s)}</option>`).join("")}</select>
+    <span class="muted" style="font-size:12px">Started</span>${dfHtml("ewad", dr)}`;
+  $("#data-extra").appendChild(refreshControl(["ewa_status"]));
+
+  const has = (r) => PROVIDERS.some(([k]) => r[k]);
+  const starts = (r) => PROVIDERS.filter(([k]) => r[k] && (!f.prov || f.prov === "any" || f.prov === k))
+    .map(([k]) => r[k + "_start"]);
+  const cell = (on, start, extra) => on
+    ? `<td>${dpill("✓ " + (start || "on"), "pill-done")}${extra ? `<div class="muted" style="font-size:11px">${esc(extra)}</div>` : ""}</td>`
+    : `<td><span class="muted">—</span></td>`;
+
+  let page = 0;
+  const render = () => {
+    const list = rows.filter((r) =>
+      (!dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ)) &&
+      (!f.prov || (f.prov === "any" ? has(r) : f.prov === "none" ? !has(r) : r[f.prov])) &&
+      (!f.status || r.live_status === f.status) &&
+      ((!dr.from && !dr.to) || starts(r).some((d) => dfPass(d, dr))));
+    const pg = pageSlice(list, page); page = pg.p;
+    $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
+        <th>Client</th><th>Live status</th><th>DailyPay</th><th>ZayZoon</th><th>PayActiv</th><th>Checked</th>
+      </tr></thead><tbody>${pg.rows.map((r) => `<tr>
+        <td><b>${esc(r.company_name)}</b><div class="muted" style="font-size:11px">${esc(r.dsp_short_code || "")}</div></td>
+        <td>${esc(r.live_status || "—")}</td>
+        ${cell(r.dailypay, r.dailypay_start)}
+        ${cell(r.zayzoon, r.zayzoon_start)}
+        ${cell(r.payactiv, r.payactiv_start, r.payactiv_schedule && r.payactiv_schedule !== "SCHEDULED" ? r.payactiv_schedule : "")}
+        <td>${fmtDate(r.checked_date)}</td></tr>`).join("") ||
+      `<tr><td colspan="6" class="muted">${rows.length ? "No clients match." : "No EWA data yet — press Refresh from Uzio."}</td></tr>`}</tbody></table></div>` +
+      pagerHtml("ewa", pg.p, pg.pages, list.length);
+    hookPager("ewa", (d) => { page += d; render(); });
+    const n = (k) => rows.filter((r) => r[k]).length;
+    $("#data-count").textContent = `${list.length} of ${rows.length} clients · ` +
+      PROVIDERS.map(([k, l]) => `${l} ${n(k)}`).join(" · ");
+  };
+  render.reset = () => { page = 0; };
+  $("#ewa-prov").onchange = (e) => { f.prov = e.target.value; page = 0; render(); };
+  $("#ewa-status").onchange = (e) => { f.status = e.target.value; page = 0; render(); };
+  wireDateFilter("ewad", dr, () => { page = 0; render(); });
   return render;
 }
 

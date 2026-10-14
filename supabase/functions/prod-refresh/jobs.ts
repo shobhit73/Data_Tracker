@@ -72,18 +72,37 @@ async function dash(
   return res;
 }
 
+/**
+ * Every row, not the first page. PostgREST caps a response at 1000 rows
+ * (max-rows) and says nothing about it except in Content-Range, so a single
+ * GET silently drops the rest: task_evidence never saw the CRM's tasks past
+ * #1000 (1173 of them on 14 Oct 2026 - Banda's Document Transfer among the
+ * missing). Pages need a stable order, so callers reading a table that can
+ * pass 1000 rows put an `order=` in `query`.
+ */
 async function dashSelect(
   ctx: JobCtx,
   table: string,
   query: string,
 ): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${ctx.dashUrl}/rest/v1/${table}?${query}`, {
-    headers: { 'apikey': ctx.dashKey, 'Authorization': `Bearer ${ctx.dashKey}` },
-  });
-  if (!res.ok) {
-    throw new Error(`GET ${table} -> HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const PAGE = 1000;
+  const out: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const res = await fetch(`${ctx.dashUrl}/rest/v1/${table}?${query}`, {
+      headers: { 'apikey': ctx.dashKey, 'Authorization': `Bearer ${ctx.dashKey}`,
+                 'Range-Unit': 'items', 'Range': `${from}-${from + PAGE - 1}`,
+                 'Prefer': 'count=exact' },
+    });
+    if (!res.ok) {
+      throw new Error(`GET ${table} -> HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+    const rows = await res.json() as Record<string, unknown>[];
+    out.push(...rows);
+    // "0-999/1173": keep going while the total is past what we hold.
+    const total = Number((res.headers.get('Content-Range') ?? '').split('/')[1]);
+    if (!rows.length || !Number.isFinite(total) || out.length >= total) return out;
+    if (from > 200 * PAGE) throw new Error(`GET ${table} paged past 200k rows, refusing to continue`);
   }
-  return await res.json();
 }
 
 async function dashInsertChunked(
@@ -1325,7 +1344,7 @@ async function taskEvidence(ctx: JobCtx): Promise<JobResult> {
   // ...and the state of play in the CRM.
   const [clients, tasks, hist] = await Promise.all([
     dashSelect(crm, 'clients', 'select=id,dsp_name,short_code'),
-    dashSelect(crm, 'tasks', 'select=id,client_id,title,status,app_touched&template_id=not.is.null'),
+    dashSelect(crm, 'tasks', 'select=id,client_id,title,status,app_touched&template_id=not.is.null&order=id'),
     dashSelect(crm, 'hist_clients', 'select=dsp_short_code,received,pending'),
   ]);
 

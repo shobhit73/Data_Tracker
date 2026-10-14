@@ -60,6 +60,106 @@ function countdownLabel(d) {
   return `Live ${-d}d ago`;
 }
 
+/* Client 360 journey: the template checklist grouped into stages, plus a pace
+   check. Pace = share of the start→go-live window already elapsed vs share of
+   applicable (non-N/A) checklist work done. The start is the contract-signed
+   date when known, else the earliest of record creation and any task done date
+   (30 clients were bulk-imported on one day, so creation alone runs late). */
+const SETUP_TASKS = ["Company Setup", "Census Transfer",
+  "Time Tracking Setup (Kiosk/Mobile/Web)", "Payment Method Transfer"];
+const PACE_TOLERANCE = 0.10, PACE_BEHIND = 0.25, MIN_WINDOW_DAYS = 7;
+
+function journeyStart(c, signedDate) {
+  if (signedDate) return { date: signedDate, src: "contract signed" };
+  const done = (c.tasks || []).map((t) => t.done_date).filter(Boolean).sort();
+  const created = (c.created_at || "").slice(0, 10);
+  const earliest = [created, done[0]].filter(Boolean).sort()[0] || null;
+  return { date: earliest, src: earliest === created ? "record created" : "first task done" };
+}
+
+function journeyHtml(c, opts = {}) {
+  const tmpl = (c.tasks || []).filter((t) => t.template);
+  const byOrder = (a, b) => (a.template.sort_order ?? 999) - (b.template.sort_order ?? 999);
+  const onb = tmpl.filter((t) => t.template.phase === "onboarding").sort(byOrder);
+  const stages = [
+    { key: "setup", label: "Setup", tasks: onb.filter((t) => SETUP_TASKS.includes(t.title)) },
+    { key: "mig", label: "Data migration", tasks: onb.filter((t) => !SETUP_TASKS.includes(t.title)) },
+    { key: "audit", label: "Audit", tasks: tmpl.filter((t) => t.template.phase === "audit").sort(byOrder) },
+  ].map((s) => {
+    const app = s.tasks.filter((t) => t.status !== "N/A");
+    const done = app.filter((t) => t.status === "Done");
+    const last = done.map((t) => t.done_date).filter(Boolean).sort().pop() || null;
+    return { ...s, app, done, last,
+      state: !app.length ? "skip" : done.length === app.length ? "done" : "todo" };
+  });
+  const live = c.status === "Live" || c.status === "Completed";
+  const firstTodo = stages.find((s) => s.state === "todo");
+  if (firstTodo) firstTodo.state = "cur";
+
+  const start = journeyStart(c, opts.signedDate);
+  const d = daysUntil(c.tt_live_date);
+  const steps = [
+    { label: "Started", state: start.date ? "done" : "todo",
+      sub: start.date ? `${esc(start.date)}` : "date unknown", title: start.src },
+    ...stages.map((s) => ({ label: s.label, state: s.state,
+      sub: s.state === "skip" ? "not needed"
+        : `${s.done.length}/${s.app.length}${s.state === "done" && s.last ? " · " + esc(s.last) : ""}` +
+          (s.key === "mig" ? `<span id="hero-hist">${opts.histHtml || ""}</span>` : ""),
+      title: s.app.map((t) => `${t.status === "Done" ? "✓" : "○"} ${t.title}`).join("\n") })),
+    { label: "Go-live", state: live ? "done" : (!firstTodo ? "cur" : "todo"),
+      sub: live ? esc(c.status) : d === null ? "no date"
+        : d < 0 ? `<span class="overdue">${-d}d past date</span>` : countdownLabel(d) },
+  ];
+
+  /* Pace chip */
+  let pace = "";
+  const work = stages.flatMap((s) => s.app);
+  const actual = work.length ? work.filter((t) => t.status === "Done").length / work.length : 1;
+  const today = localIso(new Date());
+  if (live) {
+    pace = `<span class="pace pace-ok">Live</span>`;
+  } else if (c.status === "Cancelled") {
+    pace = `<span class="pace pace-na">Cancelled</span>`;
+  } else if (c.status === "On Hold" || c.status === "Unresponsive") {
+    pace = `<span class="pace pace-warn" title="Pace is not tracked while the client is paused">Paused · ${esc(c.status)}</span>`;
+  } else if (!c.tt_live_date) {
+    pace = `<span class="pace pace-na" title="Set a TT live date to track pace">No go-live date</span>`;
+  } else if (d < 0) {
+    pace = actual >= 1
+      ? `<span class="pace pace-warn" title="Checklist complete but status not Live">Go-live passed ${-d}d ago · mark Live?</span>`
+      : `<span class="pace pace-bad">Past go-live by ${-d}d · ${Math.round(actual * 100)}% done</span>`;
+  } else if (start.date) {
+    const win = (new Date(c.tt_live_date) - new Date(start.date)) / 86400000;
+    if (win >= MIN_WINDOW_DAYS) {
+      const expected = Math.min(1, Math.max(0, (new Date(today) - new Date(start.date)) / 86400000 / win));
+      const gap = expected - actual;
+      const why = `Expected ${Math.round(expected * 100)}% by today (from ${start.date}, ${start.src}) · actual ${Math.round(actual * 100)}%`;
+      const lag = Math.max(1, Math.round(gap * win));
+      pace = gap > PACE_BEHIND
+        ? `<span class="pace pace-bad" title="${esc(why)}">Behind by ~${lag}d</span>`
+        : gap > PACE_TOLERANCE
+          ? `<span class="pace pace-warn" title="${esc(why)}">Slipping · ~${lag}d</span>`
+          : `<span class="pace pace-ok" title="${esc(why)}">On track</span>`;
+    } else {
+      pace = `<span class="pace pace-na" title="Start to go-live window is under ${MIN_WINDOW_DAYS} days">Pace n/a</span>`;
+    }
+  }
+
+  /* Next up: first open item in the current stage */
+  let next = "";
+  if (firstTodo) {
+    const t = firstTodo.app.find((x) => x.status !== "Done");
+    if (t) next = `<span class="next-up"><span class="muted">Next:</span> <b>${esc(t.title)}</b>
+      <span class="muted">→ ${esc(effectiveOwnerLabel(t, c))}</span>${t.status === "In Progress" ? " " + statusPill(t.status) : ""}</span>`;
+  }
+
+  return `<ol class="journey">${steps.map((s) =>
+      `<li class="js-${s.state}"${s.title ? ` title="${esc(s.title)}"` : ""}>
+        <span class="dot">${s.state === "done" ? "✓" : s.state === "skip" ? "–" : ""}</span>
+        <span class="jl">${s.label}</span><span class="js">${s.sub}</span></li>`).join("")}</ol>
+    <div class="journey-foot">${pace}${next}</div>`;
+}
+
 function clientRow(c) {
   return `<tr class="rowlink" data-id="${c.id}">
     <td><b>${esc(c.dsp_name)}</b></td><td>${esc(c.short_code)}</td><td>${esc(c.vendor || "—")}</td>
@@ -435,11 +535,7 @@ Views.renderClientDetail = async (view, id) => {
                    return m ? `<span class="chip">Audit folder ${esc(m[1])}</span>` : ""; })()}
         <span id="cd-chips" style="display:contents"></span>
       </div>
-      <div class="c360-bars">
-        <span><span class="muted">Onboarding</span> <span class="bar"><span style="width:${pct(tasksFor("onboarding"))}%"></span></span> <b>${pct(tasksFor("onboarding"))}%</b></span>
-        ${isMigrating(c) ? `<span><span class="muted">Audit</span> <span class="bar"><span style="width:${pct(tasksFor("audit"))}%"></span></span> <b>${pct(tasksFor("audit"))}%</b></span>` : ""}
-        <span id="hero-hist"></span>
-      </div>
+      <div id="c360-journey" class="journey-wrap">${journeyHtml(c)}</div>
     </div>
     <div class="c360">
     <div class="c360-main">

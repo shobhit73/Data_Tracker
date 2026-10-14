@@ -503,12 +503,18 @@ async function loadPlatformPanel(c) {
       ? `<div class="card" style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:0">${items.join("")}</div>` : "";
   }
 
-  /* Third bar in the Client 360 hero, next to Onboarding and Audit. */
-  const heroHist = document.getElementById("hero-hist");
-  if (heroHist && b.hist) {
-    const hp = dpct(b.hist.received, b.hist.received + b.hist.pending) ?? 0;
-    heroHist.innerHTML = `<span class="muted">Historical</span> ` +
-      `<span class="bar"><span style="width:${hp}%"></span></span> <b>${hp}%</b>`;
+  /* Journey stepper in the Client 360 hero: historical % sits under the Data
+     migration step, and a contract-signed date (when Cuzio has one) replaces
+     the fallback start the pace check measures from. */
+  const histHtml = b.hist
+    ? ` · Historical ${dpct(b.hist.received, b.hist.received + b.hist.pending) ?? 0}%` : "";
+  const signedDate = b.signed && b.signed.contract_signed_date;
+  const journeyEl = document.getElementById("c360-journey");
+  if (journeyEl && signedDate && typeof journeyHtml === "function") {
+    journeyEl.innerHTML = journeyHtml(c, { signedDate, histHtml });
+  } else {
+    const heroHist = document.getElementById("hero-hist");
+    if (heroHist) heroHist.innerHTML = histHtml;
   }
 
   if (!el) return;

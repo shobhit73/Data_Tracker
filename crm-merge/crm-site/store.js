@@ -231,7 +231,46 @@ window.Store = (() => {
     return data;
   }
 
+  /* Feedback & messages. Row visibility is the database's job (RLS: direct
+     messages reach only their two ends), so these simply ask for a kind. */
+  const MSG_COLS = "*, sender:users!messages_sender_id_fkey(name), recipient:users!messages_recipient_id_fkey(name)";
+  async function listMessages(kind) {
+    const { data, error } = await sb.from("messages").select(MSG_COLS)
+      .eq("kind", kind).order("created_at", { ascending: false }).limit(500);
+    if (error) fail(error);
+    return data;
+  }
+  async function sendMessage(fields) {
+    const { data, error } = await sb.from("messages").insert({ ...fields, sender_id: me.id }).select().single();
+    if (error) fail(error);
+    return data;
+  }
+  async function setMessageStatus(id, status) {
+    const { error } = await sb.from("messages").update({ status }).eq("id", id);
+    if (error) fail(error);
+  }
+  /* Unread = visible to me, not sent by me, no receipt, from the last 60 days
+     (older ones are history, not news). */
+  async function listUnread() {
+    const since = new Date(Date.now() - 60 * 86400000).toISOString();
+    const [msgs, reads] = await Promise.all([
+      sb.from("messages").select("id,kind,sender_id,recipient_id,parent_id")
+        .gte("created_at", since).neq("sender_id", me.id),
+      sb.from("message_reads").select("message_id").gte("read_at", since),
+    ]);
+    if (msgs.error) { console.warn("listUnread:", msgs.error.message); return []; }
+    const seen = new Set((reads.data || []).map((r) => r.message_id));
+    return msgs.data.filter((m) => !seen.has(m.id));
+  }
+  async function markRead(ids) {
+    if (!ids.length) return;
+    const { error } = await sb.from("message_reads")
+      .upsert(ids.map((id) => ({ user_id: me.id, message_id: id })), { ignoreDuplicates: true });
+    if (error) console.warn("markRead:", error.message);
+  }
+
   return { signUp, signIn, signOut, loadMe, getMe, resetPassword, updatePassword, onPasswordRecovery, listUsers, updateUser,
+           listMessages, sendMessage, setMessageStatus, listUnread, markRead,
            getAdminEmails, setAdminEmails, listClients, getClient, createClient,
            updateClient, updateModule, createTask, updateTask, addNote, addClientNote,
            listOpenTasks, listDoneTasks, getTeams, listLastActivity, getActivity,

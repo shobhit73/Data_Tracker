@@ -66,6 +66,7 @@ const NICON = {
   team:    navIcon(`<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>`),
   mytasks: navIcon(`<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M17 11l2 2 4-4"/>`),
   folder:  navIcon(`<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>`),
+  chat:    navIcon(`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`),
 };
 
 const NAV = [
@@ -77,6 +78,7 @@ const NAV = [
   { hash: "team",       label: "Team",          roles: ["admin"],                 group: "Insights", icon: NICON.team },
   { hash: "my-items",   label: "My Open Items", roles: ["admin", "implementor"],  group: "My space", icon: NICON.mytasks },
   { hash: "my-clients", label: "My Clients",    roles: ["implementor"],           group: "My space", icon: NICON.folder },
+  { hash: "feedback",   label: "Feedback",      roles: ["admin", "implementor"],  group: "Connect",  icon: NICON.chat, badge: true },
 ];
 
 function buildNav(me) {
@@ -86,9 +88,18 @@ function buildNav(me) {
       if (n.group) html += `<div class="nav-sec">${n.group}</div>`;
       lastGroup = n.group;
     }
-    html += `<a href="#${n.hash}" data-nav="${n.hash}">${n.icon}<span>${n.label}</span></a>`;
+    html += `<a href="#${n.hash}" data-nav="${n.hash}">${n.icon}<span>${n.label}</span>` +
+      (n.badge ? `<span class="nav-badge" hidden></span>` : "") + `</a>`;
   });
   $("#nav-items").innerHTML = html;
+}
+
+let badgeTimer = null;
+function startBadgePolling() {
+  clearInterval(badgeTimer);
+  refreshMessageBadge();
+  // A minute is plenty for messages between colleagues, and costs two small reads.
+  badgeTimer = setInterval(() => { if (!document.hidden) refreshMessageBadge(); }, 60000);
 }
 
 async function renderRoute() {
@@ -111,6 +122,7 @@ async function renderRoute() {
     "team":       () => Views.renderTeam(view),
     "my-items":   () => Views.renderMyItems(view),
     "my-clients": () => Views.renderMyClients(view),
+    "feedback":   () => Views.renderFeedback(view, arg),
   };
   await guard(routes[name] || routes[home]);
 }
@@ -131,6 +143,7 @@ function showApp(me) {
     <span class="who-txt"><b>${esc(me.name)}</b><small>${esc(me.role)}</small></span>`;
   buildNav(me);
   renderRoute();
+  startBadgePolling();
 }
 
 function wireLogin() {
@@ -193,6 +206,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   wireLogin();
   wireReset();
   $("#signout").onclick = () => guard(async () => {
+    clearInterval(badgeTimer);
     await Store.signOut(); location.hash = ""; showLogin();
   });
   Store.onPasswordRecovery(() => showReset());

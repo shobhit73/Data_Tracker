@@ -101,66 +101,106 @@ Views.renderToday = async (view) => {
     const d = daysUntil(c.tt_live_date);
     return !c.implementor_id && d !== null && d >= 0 && d <= UNOWNED_WINDOW_DAYS;
   }).map((c) => ({ c, open: (c.tasks || []).filter(openish).length }));
-  const atRisk = active.filter((c) => c.rag === "R" || c.rag === "A" || c.status === "On Hold" || c.status === "Unresponsive");
+  const ragRank = { R: 0, A: 1 };
+  const atRisk = active
+    .filter((c) => c.rag === "R" || c.rag === "A" || c.status === "On Hold" || c.status === "Unresponsive")
+    .sort((a, b) => (ragRank[a.rag] ?? 2) - (ragRank[b.rag] ?? 2));
   const auditGap = soon.filter((c) =>
     (c.tasks || []).some((t) => t.template?.phase === "audit" && openish(t)));
-  const stale = active.filter((c) => {
+  const quietDays = (c) => {
     const last = lastByClient[c.id] || c.created_at;
-    return !last || (Date.now() - new Date(last).getTime()) / 86400000 >= STALE_DAYS;
-  });
+    return last ? Math.floor((Date.now() - new Date(last).getTime()) / 86400000) : null;
+  };
+  const stale = active
+    .filter((c) => { const d = quietDays(c); return d === null || d >= STALE_DAYS; })
+    .sort((a, b) => (quietDays(b) ?? 9e9) - (quietDays(a) ?? 9e9));
 
   const clientLink = (c) => `<a href="#client/${c.id}">${esc(c.dsp_name)}</a>`;
-  const table = (head, rows) => `<table class="grid"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
-  const section = (title, count, body) => count
-    ? `<h2>${title} <span class="muted">(${count})</span></h2>${body}` : "";
 
   const soonRows = soon.map((c) => `<tr>
       <td>${clientLink(c)}</td><td><b>${countdownLabel(daysUntil(c.tt_live_date))}</b></td>
       <td>${fmtDate(c.tt_live_date)}</td><td>${esc(c.implementor?.name || "—")}</td>
       <td><span class="bar"><span style="width:${pct(c.tasks)}%"></span></span> ${pct(c.tasks)}%</td>
-      <td>${clientStatusPill(c.status)}</td></tr>`).join("");
+      <td>${clientStatusPill(c.status)}</td></tr>`);
   const overdueRows = overdue.map((t) => `<tr>
       <td>${clientLink(t._client)}</td><td>${esc(t.title)}</td>
       <td>${esc(effectiveOwnerLabel(t, t._client))}</td><td class="overdue">${fmtDate(t.due_date)}</td>
-      <td>${statusPill(t.status)}</td></tr>`).join("");
+      <td>${statusPill(t.status)}</td></tr>`);
   const unownedRows = unowned.map(({ c, open }) => `<tr>
       <td>${clientLink(c)}</td>
       <td><b>${countdownLabel(daysUntil(c.tt_live_date))}</b></td>
-      <td>${open} open task${open === 1 ? "" : "s"}</td></tr>`).join("");
+      <td>${open} open task${open === 1 ? "" : "s"}</td></tr>`);
   const riskRows = atRisk.map((c) => `<tr>
       <td>${clientLink(c)}</td><td><span class="rag rag-${c.rag || "none"}"></span> ${esc(c.rag || "—")}</td>
       <td>${clientStatusPill(c.status)}</td><td>${fmtDate(c.tt_live_date)}</td>
-      <td>${esc(c.implementor?.name || "—")}</td></tr>`).join("");
+      <td>${esc(c.implementor?.name || "—")}</td></tr>`);
   const gapRows = auditGap.map((c) => {
     const openAudit = (c.tasks || []).filter((t) => t.template?.phase === "audit" && openish(t));
     return `<tr><td>${clientLink(c)}</td>
       <td>${countdownLabel(daysUntil(c.tt_live_date))}</td>
       <td>${openAudit.map((t) => `<span class="chip">${esc(t.title)}</span>`).join(" ")}</td></tr>`;
-  }).join("");
+  });
   const staleRows = stale.map((c) => {
-    const last = lastByClient[c.id] || c.created_at;
-    const days = last ? Math.floor((Date.now() - new Date(last).getTime()) / 86400000) : null;
+    const days = quietDays(c);
     return `<tr><td>${clientLink(c)}</td>
       <td>${days === null ? "no activity yet" : days + " days quiet"}</td>
       <td>${esc(c.implementor?.name || "—")}</td><td>${esc(c.status)}</td></tr>`;
-  }).join("");
+  });
+
+  // Compact digest: top rows visible, rest behind "Show all"; chronic lists start collapsed.
+  const CAP = 8;
+  const capTable = (id, head, rowArr) => {
+    const rows = rowArr.map((r, i) =>
+      i >= CAP ? r.replace("<tr>", `<tr class="cap-hide" data-cap="${id}">`) : r).join("");
+    const more = rowArr.length > CAP
+      ? `<div class="cap-more"><button type="button" class="linkish" data-capbtn="${id}">Show all ${rowArr.length}</button></div>`
+      : "";
+    return `<div style="overflow-x:auto"><table class="grid"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>${more}`;
+  };
+  const section = (id, title, rowArr, head, open) => rowArr.length
+    ? `<details id="sec-${id}" class="card today-sec"${open ? " open" : ""}>
+        <summary>${title}<span class="cnt">${rowArr.length}</span></summary>
+        <div class="sec-body">${capTable(id, head, rowArr)}</div>
+      </details>`
+    : "";
+  const chip = (id, label, count, tone) => count
+    ? `<button type="button" class="tstat ${tone}" data-jump="sec-${id}">${label} <b>${count}</b></button>`
+    : "";
 
   const total = soon.length + overdue.length + unowned.length + atRisk.length + auditGap.length + stale.length;
   view.innerHTML = `<div class="page-head"><h1>Today</h1>
       <span class="muted">${new Date().toDateString()}</span></div>` +
-    (total === 0 ? `<p class="muted" style="font-size:15px">Nothing needs attention. 🎉</p>` : "") +
-    section("Going live soon", soon.length,
-      table(`<th>Client</th><th>Countdown</th><th>TT live</th><th>Implementor</th><th>Checklist</th><th>Status</th>`, soonRows)) +
-    section("Overdue", overdue.length,
-      table(`<th>Client</th><th>Task</th><th>Owner</th><th>Due</th><th>Status</th>`, overdueRows)) +
-    section(`No implementor (go-live ≤ ${UNOWNED_WINDOW_DAYS}d)`, unowned.length,
-      table(`<th>Client</th><th>Go-live</th><th>Open work</th>`, unownedRows)) +
-    section("At risk / stalled", atRisk.length,
-      table(`<th>Client</th><th>RAG</th><th>Status</th><th>TT live</th><th>Implementor</th>`, riskRows)) +
-    section("Audit gaps before go-live", auditGap.length,
-      table(`<th>Client</th><th>Countdown</th><th>Open audit items</th>`, gapRows)) +
-    section("Gone quiet", stale.length,
-      table(`<th>Client</th><th>Silence</th><th>Implementor</th><th>Status</th>`, staleRows));
+    (total === 0
+      ? `<p class="muted" style="font-size:15px">Nothing needs attention. 🎉</p>`
+      : `<div class="today-strip">` +
+          chip("soon", "Going live", soon.length, "go") +
+          chip("overdue", "Overdue", overdue.length, "warn") +
+          chip("unowned", "No implementor", unowned.length, "amber") +
+          chip("risk", "At risk", atRisk.length, "amber") +
+          chip("gap", "Audit gaps", auditGap.length, "warn") +
+          chip("stale", "Gone quiet", stale.length, "") +
+        `</div>`) +
+    section("soon", "Going live soon", soonRows,
+      `<th>Client</th><th>Countdown</th><th>TT live</th><th>Implementor</th><th>Checklist</th><th>Status</th>`, true) +
+    section("overdue", "Overdue", overdueRows,
+      `<th>Client</th><th>Task</th><th>Owner</th><th>Due</th><th>Status</th>`, true) +
+    section("unowned", `No implementor (go-live ≤ ${UNOWNED_WINDOW_DAYS}d)`, unownedRows,
+      `<th>Client</th><th>Go-live</th><th>Open work</th>`, true) +
+    section("risk", "At risk / stalled", riskRows,
+      `<th>Client</th><th>RAG</th><th>Status</th><th>TT live</th><th>Implementor</th>`, false) +
+    section("gap", "Audit gaps before go-live", gapRows,
+      `<th>Client</th><th>Countdown</th><th>Open audit items</th>`, false) +
+    section("stale", "Gone quiet", staleRows,
+      `<th>Client</th><th>Silence</th><th>Implementor</th><th>Status</th>`, false);
+
+  view.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => {
+    const d = document.getElementById(b.dataset.jump);
+    if (d) { d.open = true; d.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  }));
+  view.querySelectorAll("[data-capbtn]").forEach((b) => (b.onclick = () => {
+    view.querySelectorAll(`[data-cap="${b.dataset.capbtn}"]`).forEach((tr) => tr.classList.remove("cap-hide"));
+    b.closest(".cap-more").remove();
+  }));
 };
 
 Views.renderAuditStatus = async (view) => {

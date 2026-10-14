@@ -65,15 +65,26 @@ input:focus, select:focus { border-color: var(--brand); }
 /* Navigation drawer: light surface container with pill-shaped active
    indicator (secondary container), per MD3 - replaces the old navy rail. */
 #app { display: flex; min-height: 100vh; }
-#nav { width: 216px; background: var(--surface-cont); color: var(--muted);
+#nav { width: 232px; background: var(--surface-cont); color: var(--muted);
   display: flex; flex-direction: column; flex-shrink: 0; }
 .brand { font-weight: 700; padding: 20px 20px 12px; font-size: 17px; color: var(--brand); }
 #nav-items { display: flex; flex-direction: column; gap: 2px; padding: 0 10px; }
-#nav-items a { color: var(--muted); padding: 10px 14px; border-radius: 999px; font-weight: 500; }
+#nav-items a { color: var(--muted); padding: 10px 14px; border-radius: 999px; font-weight: 500;
+  display: flex; align-items: center; gap: 12px; font-size: 14px; }
+#nav-items a svg { flex-shrink: 0; opacity: .8; }
 #nav-items a:hover { background: var(--surface-cont-high); text-decoration: none; }
 #nav-items a.active { background: var(--sec-cont); color: var(--on-sec-cont); font-weight: 600; }
+#nav-items a.active svg { opacity: 1; }
+.nav-sec { font-size: 11px; letter-spacing: .8px; text-transform: uppercase; font-weight: 600;
+  color: var(--muted); padding: 18px 14px 4px; }
 .nav-foot { margin-top: auto; padding: 14px 16px; font-size: 12px;
-  display: flex; flex-direction: column; gap: 8px; }
+  display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); }
+#who { display: flex; align-items: center; gap: 10px; }
+.ava { width: 32px; height: 32px; border-radius: 50%; background: var(--brand); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+.who-txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.who-txt b { font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who-txt small { color: var(--muted); text-transform: capitalize; }
 .nav-foot button { background: transparent; border: 1px solid var(--outline); color: var(--ink); }
 #view { flex: 1; padding: 24px 28px; min-width: 0; }
 
@@ -121,8 +132,10 @@ tr.rowlink { cursor: pointer; } tr.rowlink:hover { background: var(--surface-con
 @media (max-width: 760px) {
   #app { flex-direction: column; }
   #nav { width: 100%; flex-direction: row; align-items: center; flex-wrap: wrap; }
-  #nav-items { flex-direction: row; }
-  .nav-foot { margin-top: 0; margin-left: auto; flex-direction: row; align-items: center; }
+  #nav-items { flex-direction: row; flex-wrap: wrap; }
+  .nav-sec { display: none; }
+  .nav-foot { margin-top: 0; margin-left: auto; flex-direction: row; align-items: center; border-top: none; }
+  .who-txt small { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
@@ -222,3 +235,34 @@ details.cgroup table.grid { border: none; border-radius: 0; }
    moves. */
 .page-head #data-count { margin-left: auto; }
 .page-head .refresh-control { margin-left: 12px; }
+
+/* Today digest: a strip of tonal count chips that jump to collapsible
+   sections; long tables cap at 8 rows behind a "Show all" link so the page
+   reads as a briefing, not a dump. */
+.today-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.tstat { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface-cont-low);
+  color: var(--ink); font-size: 13px; font-weight: 500; cursor: pointer;
+  box-shadow: none; transition: background .15s; }
+.tstat:hover:not(:disabled) { background: var(--surface-cont-high); box-shadow: none; filter: none; }
+.tstat b { font-size: 14px; }
+/* Tonal pairs — background and color always set together (CRM button rule). */
+.tstat.go { background: var(--sec-cont); color: var(--on-sec-cont); border-color: transparent; }
+.tstat.warn { background: #f9dedc; color: #8c1d18; border-color: transparent; }
+.tstat.amber { background: #fdf3d7; color: #7a5c00; border-color: transparent; }
+
+details.today-sec { padding: 0; }
+.today-sec > summary { cursor: pointer; list-style: none; display: flex; align-items: center;
+  gap: 10px; padding: 14px 18px; font-size: 15px; font-weight: 600; border-radius: var(--r-lg); }
+.today-sec > summary::-webkit-details-marker { display: none; }
+.today-sec > summary::after { content: "▾"; margin-left: auto; color: var(--muted);
+  transition: transform .15s; }
+.today-sec[open] > summary::after { transform: rotate(180deg); }
+.today-sec .cnt { background: var(--surface-cont-high); color: var(--muted);
+  border-radius: 999px; padding: 1px 10px; font-size: 12px; font-weight: 600; }
+.today-sec .sec-body { padding: 0 18px 16px; }
+.cap-hide { display: none; }
+.cap-more { padding: 10px 0 2px; }
+.linkish { background: none; border: none; color: var(--brand); font-weight: 600;
+  font-size: 13px; cursor: pointer; padding: 4px 10px; border-radius: 999px; }
+.linkish:hover:not(:disabled) { background: var(--surface-cont-high); box-shadow: none; filter: none; }

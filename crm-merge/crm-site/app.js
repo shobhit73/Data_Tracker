@@ -55,20 +55,40 @@ function latestNote(t) {
     : `<span class="muted">—</span>`;
 }
 
+const navIcon = (paths) =>
+  `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const NICON = {
+  today:   navIcon(`<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="12" cy="15.5" r="1.5" fill="currentColor" stroke="none"/>`),
+  clients: navIcon(`<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>`),
+  tasks:   navIcon(`<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>`),
+  audit:   navIcon(`<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>`),
+  data:    navIcon(`<path d="M12 20V10M18 20V4M6 20v-4"/>`),
+  team:    navIcon(`<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>`),
+  mytasks: navIcon(`<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M17 11l2 2 4-4"/>`),
+  folder:  navIcon(`<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>`),
+};
+
 const NAV = [
-  { hash: "today",      label: "Today",         roles: ["admin"] },
-  { hash: "clients",    label: "Clients",       roles: ["admin"] },
-  { hash: "open-items", label: "Open Items",    roles: ["admin"] },
-  { hash: "audit-status", label: "Audit Status", roles: ["admin", "implementor"] },
-  { hash: "data",       label: "Data",          roles: ["admin", "implementor"] },
-  { hash: "team",       label: "Team",          roles: ["admin"] },
-  { hash: "my-items",   label: "My Open Items", roles: ["admin", "implementor"] },
-  { hash: "my-clients", label: "My Clients",    roles: ["implementor"] },
+  { hash: "today",      label: "Today",         roles: ["admin"],                 group: "",         icon: NICON.today },
+  { hash: "clients",    label: "Clients",       roles: ["admin"],                 group: "Manage",   icon: NICON.clients },
+  { hash: "open-items", label: "Open Items",    roles: ["admin"],                 group: "Manage",   icon: NICON.tasks },
+  { hash: "audit-status", label: "Audit Status", roles: ["admin", "implementor"], group: "Manage",   icon: NICON.audit },
+  { hash: "data",       label: "Data",          roles: ["admin", "implementor"],  group: "Insights", icon: NICON.data },
+  { hash: "team",       label: "Team",          roles: ["admin"],                 group: "Insights", icon: NICON.team },
+  { hash: "my-items",   label: "My Open Items", roles: ["admin", "implementor"],  group: "My space", icon: NICON.mytasks },
+  { hash: "my-clients", label: "My Clients",    roles: ["implementor"],           group: "My space", icon: NICON.folder },
 ];
 
 function buildNav(me) {
-  $("#nav-items").innerHTML = NAV.filter((n) => n.roles.includes(me.role))
-    .map((n) => `<a href="#${n.hash}" data-nav="${n.hash}">${n.label}</a>`).join("");
+  let html = "", lastGroup = null;
+  NAV.filter((n) => n.roles.includes(me.role)).forEach((n) => {
+    if (n.group !== lastGroup) {
+      if (n.group) html += `<div class="nav-sec">${n.group}</div>`;
+      lastGroup = n.group;
+    }
+    html += `<a href="#${n.hash}" data-nav="${n.hash}">${n.icon}<span>${n.label}</span></a>`;
+  });
+  $("#nav-items").innerHTML = html;
 }
 
 async function renderRoute() {
@@ -106,7 +126,9 @@ function showReset() {
 function showApp(me) {
   $("#login").style.display = "none";
   $("#app").style.display = "flex";
-  $("#who").textContent = `${me.name} · ${me.role}`;
+  const initial = (me.name || "?").trim().charAt(0).toUpperCase() || "?";
+  $("#who").innerHTML = `<span class="ava">${esc(initial)}</span>
+    <span class="who-txt"><b>${esc(me.name)}</b><small>${esc(me.role)}</small></span>`;
   buildNav(me);
   renderRoute();
 }

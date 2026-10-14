@@ -747,8 +747,12 @@ async function docsTab() {
    (DailyPay / ZayZoon flags, PayActiv SFTP report), straight from prod via
    the ewa_status job. Asked for by Sanya, 14 Oct 2026. --- */
 async function ewaTab() {
-  const rows = await Store.listEwa();
+  const [rows, sysRows] = await Promise.all([Store.listEwa(), Store.listSystemActivity()]);
   const PROVIDERS = [["dailypay", "DailyPay"], ["zayzoon", "ZayZoon"], ["payactiv", "PayActiv"]];
+  // Payroll and TT start are prod facts from system_activity: the first normal
+  // pay run, and the first real punch (imported history excluded).
+  const sysBy = Object.fromEntries(sysRows.map((s) => [s.dsp_short_code, s]));
+  const integStart = (r) => PROVIDERS.map(([k]) => r[k] && r[k + "_start"]).filter(Boolean).sort()[0] || null;
   const f = { prov: "", status: "" };
   const dr = { from: "", to: "" };   // provider start date
   const statuses = [...new Set(rows.map((r) => r.live_status).filter(Boolean))].sort();
@@ -778,15 +782,22 @@ async function ewaTab() {
       ((!dr.from && !dr.to) || starts(r).some((d) => dfPass(d, dr))));
     const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
-        <th>Client</th><th>Live status</th><th>DailyPay</th><th>ZayZoon</th><th>PayActiv</th><th>Checked</th>
-      </tr></thead><tbody>${pg.rows.map((r) => `<tr>
+        <th>Client</th><th>Live status</th><th>DailyPay</th><th>ZayZoon</th><th>PayActiv</th>
+        <th title="Earliest start date among this client's EWA providers">Integration start</th>
+        <th title="First normal pay run in Uzio">Payroll start</th>
+        <th title="First real time-tracking punch in Uzio (imported history excluded)">TT start</th>
+        <th>Checked</th>
+      </tr></thead><tbody>${pg.rows.map((r) => { const s = sysBy[r.dsp_short_code] || {}; return `<tr>
         <td><b>${esc(r.company_name)}</b><div class="muted" style="font-size:11px">${esc(r.dsp_short_code || "")}</div></td>
         <td>${esc(r.live_status || "—")}</td>
         ${cell(r.dailypay, r.dailypay_start)}
         ${cell(r.zayzoon, r.zayzoon_start)}
         ${cell(r.payactiv, r.payactiv_start, r.payactiv_schedule && r.payactiv_schedule !== "SCHEDULED" ? r.payactiv_schedule : "")}
-        <td>${fmtDate(r.checked_date)}</td></tr>`).join("") ||
-      `<tr><td colspan="6" class="muted">${rows.length ? "No clients match." : "No EWA data yet — press Refresh from Uzio."}</td></tr>`}</tbody></table></div>` +
+        <td>${fmtDate(integStart(r))}</td>
+        <td>${fmtDate(s.pr_first_normal_date)}</td>
+        <td>${fmtDate(s.tt_first_live_date)}</td>
+        <td>${fmtDate(r.checked_date)}</td></tr>`; }).join("") ||
+      `<tr><td colspan="9" class="muted">${rows.length ? "No clients match." : "No EWA data yet — press Refresh from Uzio."}</td></tr>`}</tbody></table></div>` +
       pagerHtml("ewa", pg.p, pg.pages, list.length);
     hookPager("ewa", (d) => { page += d; render(); });
     const n = (k) => rows.filter((r) => r[k]).length;

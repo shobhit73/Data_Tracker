@@ -223,6 +223,17 @@ window.Store = (() => {
              signed: signedRows[0] || null };
   }
 
+  /* The client's FEIN, for tools that look the company up in prod. Same
+     precedence as getPlatformBundle: the tracker profile, then prod's coverage. */
+  async function getClientFein(shortCode) {
+    if (!shortCode) return null;
+    for (const t of ["client_profile", "client_data_coverage", "client_system_activity"]) {
+      const rows = await listWhere(t, "dsp_short_code", shortCode);
+      if (rows[0]?.fein) return String(rows[0].fein);
+    }
+    return null;
+  }
+
   async function getActivity(clientId) {
     const { data, error } = await sb.from("activity_log")
       .select("*, actor:users(name)")
@@ -279,5 +290,5 @@ window.Store = (() => {
            listApiActivity, listPayrollHealth, listDataCoverage,
            listDocumentTransfers, listDocumentCounts,
            listHistClients, listHistStatus, listHistOutOfScope, listEwa, listSystemActivity,
-           getPlatformBundle };
+           getPlatformBundle, getClientFein };
 })();

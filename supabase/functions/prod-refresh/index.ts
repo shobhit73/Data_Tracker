@@ -52,11 +52,18 @@
  *   { "action": "api_run_detail", "runId": 4521, "obToken": "..." }
  * Read-only onboarding log lookups for the CRM's API Activity drawer, under
  * the reader's own Uzio sign-in; see logs.ts. An `action` body never runs a job.
+ *
+ *   { "action": "ops_login", "username": "...", "password": "..." }
+ *   { "action": "ecr_find", "feins": ["..."], "ids": [], "opsToken": "..." }
+ *   { "action": "ecr_versions", "employeeCode": "...", "opsToken": "..." }
+ * Employee Profile Change Report data, under the reader's own NeuronOps
+ * sign-in; see ecr.ts.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { JOBS, type JobCtx, type JobResult } from './jobs.ts';
 import { apiRuns, apiRunDetail, obLogin } from './logs.ts';
-import { OnboardingAuthError } from './prodQuery.ts';
+import { UzioAuthError } from './prodQuery.ts';
+import { ecrFind, ecrVersions, opsLogin } from './ecr.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -135,7 +142,8 @@ Deno.serve(async (req: Request) => {
   // --- what to run --------------------------------------------------------
   let body: { jobs?: string[]; dryRun?: boolean; taskEvidenceCap?: number;
               action?: string; fein?: string; runId?: number;
-              username?: string; password?: string; obToken?: string } = {};
+              username?: string; password?: string; obToken?: string;
+              opsToken?: string; feins?: string[]; ids?: string[]; employeeCode?: string } = {};
   try {
     const text = await req.text();
     if (text.trim()) body = JSON.parse(text);
@@ -156,6 +164,23 @@ Deno.serve(async (req: Request) => {
         console.log(`uzio sign-in for log viewer: crm=${email} uzio=${out.user}`);
         return json(out);
       }
+      // Employee Profile Change Report (ecr.ts): NeuronOps, the reader's own login.
+      if (body.action === 'ops_login') {
+        const out = await opsLogin(body.username, body.password);
+        console.log(`uzio sign-in for change report: crm=${email} uzio=${out.user}`);
+        return json(out);
+      }
+      const opsReads: Record<string, (ops: { token: string }) => Promise<{ queryIds?: string[] }>> = {
+        ecr_find: (ops) => ecrFind(ops, body.feins, body.ids),
+        ecr_versions: (ops) => ecrVersions(ops, body.employeeCode),
+      };
+      if (body.action in opsReads) {
+        if (!body.opsToken) return json({ error: 'sign in to Uzio first', needLogin: true }, 401);
+        const out = await opsReads[body.action]({ token: body.opsToken });
+        console.log(`change-report read by ${email}: ${body.action} employee=${body.employeeCode ?? '-'} ` +
+                    `queryIds=${(out.queryIds ?? []).join(',')}`);
+        return json({ ranBy: email, ...out });
+      }
       const reads: Record<string, (ob: { token: string }) => Promise<{ queryIds?: string[] }>> = {
         api_runs: (ob) => apiRuns(ob, body.fein),
         api_run_detail: (ob) => apiRunDetail(ob, body.runId),
@@ -168,7 +193,7 @@ Deno.serve(async (req: Request) => {
                   `queryIds=${(out.queryIds ?? []).join(',')}`);
       return json({ ranBy: email, ...out });
     } catch (e) {
-      if (e instanceof OnboardingAuthError) {
+      if (e instanceof UzioAuthError) {
         return json({ error: e.message, needLogin: true }, 401);
       }
       return json({ error: (e as Error).message }, 400);

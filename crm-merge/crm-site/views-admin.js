@@ -534,6 +534,8 @@ Views.renderClientDetail = async (view, id) => {
           ? `<a class="btn-refresh" href="${esc(c.drive_folder_url)}" target="_blank" rel="noopener noreferrer"
                title="Open this client's folder under Amazon DSP in Google Drive">📁 Drive folder</a>`
           : isAdmin ? `<span class="muted" style="font-size:12px">No Drive folder linked — add it under Details</span>` : ""}
+        <button type="button" class="btn-refresh" id="c-ecr"
+          title="Who changed which employee profile field, when, and from where — the workbook Uzio exports">Employee change report</button>
         <a href="#${isAdmin ? "clients" : "my-clients"}">← back</a>
       </span>
     </div>
@@ -642,6 +644,10 @@ Views.renderClientDetail = async (view, id) => {
   // Fills #cd-platform from the read-only reporting tables (views-data.js).
   // Fire-and-forget: the core page never waits on it and never breaks with it.
   if (typeof loadPlatformPanel === "function") loadPlatformPanel(c);
+  $("#c-ecr").onclick = () => guard(async () => {
+    if (typeof changeReportDrawer !== "function") throw new Error("Change report is not loaded — refresh the page.");
+    changeReportDrawer(c, await Store.getClientFein(c.short_code));
+  });
 
   const reload = () => Views.renderClientDetail(view, id);
 

@@ -42,7 +42,7 @@ export interface QueryResult {
  * token cached by the local prod-query tooling, which simply re-mints. A
  * separate NeuronOps account for this function removes the collision.
  */
-async function mintToken(username: string, password: string): Promise<string> {
+export async function mintToken(username: string, password: string): Promise<string> {
   const res = await fetch(`${GATEWAY}/api/auth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -66,10 +66,12 @@ async function mintToken(username: string, password: string): Promise<string> {
  */
 export async function prodQuery(
   sql: string,
-  opts: { username: string; password: string; size?: number } ,
+  opts: { username?: string; password?: string; token?: string; size?: number },
 ): Promise<QueryResult> {
   const size = Math.min(opts.size ?? 1000, 5000);   // server hard-caps at 5000
-  const token = await mintToken(opts.username, opts.password);
+  // A token is a CRM user's own Uzio sign-in (ecr.ts); otherwise the
+  // function's service account mints one, as the scheduled jobs do.
+  const token = opts.token ?? await mintToken(opts.username ?? '', opts.password ?? '');
 
   const rows: Record<string, unknown>[] = [];
   const queryIds: string[] = [];
@@ -89,6 +91,9 @@ export async function prodQuery(
       body: JSON.stringify({ sql, page, size }),
     });
 
+    if (opts.token && res.status === 401) {
+      throw new UzioAuthError('Uzio sign-in expired, sign in again');
+    }
     if (!res.ok) {
       const text = (await res.text()).slice(0, 300);
       throw new Error(`prod-query page ${page} -> HTTP ${res.status}: ${text}`);
@@ -161,7 +166,7 @@ export async function onboardingToken(
 
 /** Thrown when the endpoint refuses a caller-supplied token (expired/revoked),
  *  so the CRM can send its user back to the Uzio sign-in. */
-export class OnboardingAuthError extends Error {}
+export class UzioAuthError extends Error {}
 
 export async function onboardingQuery(
   sql: string,
@@ -187,7 +192,7 @@ export async function onboardingQuery(
       body: JSON.stringify({ sql, page, size }),
     });
     if (opts.token && (res.status === 401 || res.status === 403)) {
-      throw new OnboardingAuthError('Uzio sign-in expired, sign in again');
+      throw new UzioAuthError('Uzio sign-in expired, sign in again');
     }
     if (!res.ok) {
       const text = (await res.text()).slice(0, 300);

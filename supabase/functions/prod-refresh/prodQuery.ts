@@ -134,17 +134,17 @@ export function sqlList(values: string[]): string {
  *       OPTIONS /app/onboarding/token  -> 403
  *
  *   NeuronOps allows the preflight; onboarding refuses it. So this half has to
- *   run server-side under one account, and who pressed the button is recorded
- *   on our side (index.ts logs the caller) rather than in prod's audit. The
- *   upside is that it works for people with no Uzio ops login at all, which is
- *   what the button was asked to do.
+ *   run server-side. The scheduled jobs use one service account, and who
+ *   pressed the button is recorded on our side (index.ts logs the caller). The
+ *   log viewer (logs.ts) is different: it relays the CRM user's OWN Uzio
+ *   sign-in through here, so prod's audit names the person reading.
  *
  * Tables live in the `prod_onboarding_db` schema, which is the search_path, so
  * unqualified names work. `deleted` is NULL rather than 0 on every row -- a
  * `where deleted = 0` silently returns nothing.
  * ====================================================================== */
 
-async function onboardingToken(
+export async function onboardingToken(
   username: string, password: string, fein: string,
 ): Promise<string> {
   const res = await fetch(`${GATEWAY}/app/onboarding/token`, {
@@ -159,12 +159,19 @@ async function onboardingToken(
   return body.token as string;
 }
 
+/** Thrown when the endpoint refuses a caller-supplied token (expired/revoked),
+ *  so the CRM can send its user back to the Uzio sign-in. */
+export class OnboardingAuthError extends Error {}
+
 export async function onboardingQuery(
   sql: string,
-  opts: { username: string; password: string; fein: string; size?: number },
+  opts: { username?: string; password?: string; fein?: string; token?: string; size?: number },
 ): Promise<QueryResult> {
   const size = Math.min(opts.size ?? 500, 5000);
-  const token = await onboardingToken(opts.username, opts.password, opts.fein);
+  // A token means a CRM user's own Uzio sign-in (logs.ts); otherwise the
+  // function's service account mints one, as the scheduled jobs do.
+  const token = opts.token ??
+    await onboardingToken(opts.username ?? '', opts.password ?? '', opts.fein ?? '');
 
   const rows: Record<string, unknown>[] = [];
   const queryIds: string[] = [];
@@ -179,6 +186,9 @@ export async function onboardingQuery(
       },
       body: JSON.stringify({ sql, page, size }),
     });
+    if (opts.token && (res.status === 401 || res.status === 403)) {
+      throw new OnboardingAuthError('Uzio sign-in expired, sign in again');
+    }
     if (!res.ok) {
       const text = (await res.text()).slice(0, 300);
       throw new Error(`onboarding query page ${page} -> HTTP ${res.status}: ${text}`);

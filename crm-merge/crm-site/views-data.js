@@ -244,86 +244,343 @@ Views.renderData = async (view, tab) => {
   renderBody();
 };
 
-/* --- API Activity: clients × modules, has each onboarding API ever run OK. --- */
+/* --- API Activity: clients × modules, has each onboarding API ever run OK.
+   Filters work on one module or on any; a cell or client name opens the run
+   log drawer (apiLogDrawer) for that client. --- */
+const API_STATE_LABEL = { ok: "OK", last_failed: "Last run failed", never_ok: "Never OK",
+  no_result: "No result", none: "Never run" };
+function apiState(r) {
+  if (!r) return "none";
+  if (r.run_status === "ok") return "ok";
+  return r.run_status || "never_ok";
+}
+
 async function apiTab() {
   const runs = await Store.listApiActivity();
-  const byClient = new Map(); // fein -> {name, vendor, runs: {module: row}}
+  const byClient = new Map(); // fein -> {fein, name, vendor, runs: {module: row}}
   runs.forEach((r) => {
-    if (!byClient.has(r.fein)) byClient.set(r.fein, { name: r.client_name, vendor: r.vendor, runs: {} });
+    if (!byClient.has(r.fein)) byClient.set(r.fein, { fein: r.fein, name: r.client_name, vendor: r.vendor, runs: {} });
     byClient.get(r.fein).runs[r.module_key] = r;
   });
   const clients = [...byClient.values()].sort((a, b) => a.name.localeCompare(b.name));
-  let vendor = "all", gapsOnly = false, staleDays = 0;
+  const f = { vendor: "", module: "", state: "", stale: 0, by: "" };
+  const dr = { from: "", to: "" };   // last run date, on the chosen module or any
+  const runners = [...new Set(runs.map((r) => r.run_by).filter(Boolean))].sort();
   $("#data-extra").innerHTML = `
-    <select id="api-vendor"><option value="all">All vendors</option>
-      <option>ADP</option><option>Paycom</option></select>
-    <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="api-gaps"> gaps only</label>
-    <select id="api-stale" title="Show only clients with at least one module whose last OK run is older than this">
-      <option value="0">Any age</option>
-      <option value="30">OK &gt;30d old</option>
-      <option value="60">OK &gt;60d old</option>
-      <option value="90">OK &gt;90d old</option>
-    </select>`;
+    <select id="api-vendor"><option value="">All vendors</option><option>ADP</option><option>Paycom</option></select>
+    <select id="api-module"><option value="">Any API</option>
+      ${API_MODULES.map(([m, l]) => `<option value="${m}">${l}</option>`).join("")}</select>
+    <select id="api-state">
+      <option value="">Any result</option>
+      <option value="problem" title="last run failed, never fully OK, or died without a result">Failed / no result</option>
+      <option value="last_failed">Last run failed</option>
+      <option value="never_ok">Never OK</option>
+      <option value="none">Never run</option>
+      <option value="ok">OK</option>
+    </select>
+    <select id="api-by"><option value="">Run by anyone</option>
+      ${runners.map((r) => `<option>${esc(r)}</option>`).join("")}</select>
+    <select id="api-stale" title="Last OK run older than">
+      <option value="0">Any age</option><option value="30">OK &gt;30d ago</option>
+      <option value="60">OK &gt;60d ago</option><option value="90">OK &gt;90d ago</option>
+    </select>
+    <span class="muted" style="font-size:12px">Last run</span>${dfHtml("apir", dr)}
+    <button type="button" class="linkish" id="api-clear">Clear</button>`;
   // api_activity rebuilds this tab's numbers from prod; push_to_crm is what
   // makes them visible here rather than only in the DSP Ops project.
   $("#data-extra").appendChild(refreshControl(["api_activity", "push_to_crm"]));
 
-  const cell = (r) => {
+  const cell = (c, m) => {
+    const r = c.runs[m];
+    const open = `data-log="${esc(c.fein)}" data-mod="${m}"`;
     if (!r) return `<td><span class="muted">—</span></td>`;
     if (r.run_status === "ok" || r.last_ok_date)
-      return `<td title="last OK ${esc(r.last_ok_date || r.last_run_date)} by ${esc(r.last_ok_by || r.run_by || "?")}">` +
+      return `<td class="logcell" ${open} title="last OK ${esc(r.last_ok_date || r.last_run_date)} by ${esc(r.last_ok_by || r.run_by || "?")} · click for the run log">` +
         dpill("✓ " + dshort(r.last_ok_date || r.last_run_date), "pill-done") + `</td>`;
     if (r.run_status === "last_failed")
-      return `<td title="last run ${esc(r.last_run_date)} failed (${r.last_failed ?? "?"} of ${r.last_total ?? "?"})">` +
+      return `<td class="logcell" ${open} title="last run ${esc(r.last_run_date)} failed (${r.last_failed ?? "?"} of ${r.last_total ?? "?"}) · click for why">` +
         dpill("! " + dshort(r.last_run_date), "pill-onhold") + `</td>`;
-    return `<td title="ran ${esc(r.last_run_date || "?")}, never fully OK">` +
+    return `<td class="logcell" ${open} title="ran ${esc(r.last_run_date || "?")}, never fully OK · click for why">` +
       dpill("✕", "pill-cancelled") + `</td>`;
   };
-  const hasGap = (c) => API_MODULES.some(([m]) => !c.runs[m] || c.runs[m].run_status !== "ok");
-  // Stale = at least one module that HAS run ok, but not since the cutoff.
-  // Never-run modules are the gaps-only toggle's business, not this one's.
-  const isStale = (c, days) => {
-    const cut = new Date(); cut.setDate(cut.getDate() - days);
+  const mods = () => f.module ? [f.module] : API_MODULES.map(([m]) => m);
+  const stateMatch = (c) => {
+    if (!f.state) return true;
+    return mods().some((m) => {
+      const s = apiState(c.runs[m]);
+      // "Never run" is its own option: with Any API it would match every
+      // client, since nobody runs every API.
+      return f.state === "problem" ? s !== "ok" && s !== "none" : s === f.state;
+    });
+  };
+  // Stale = a module that HAS run ok, but not since the cutoff.
+  const staleMatch = (c) => {
+    if (!f.stale) return true;
+    const cut = new Date(); cut.setDate(cut.getDate() - f.stale);
     const iso = localIso(cut);
-    return API_MODULES.some(([m]) => {
+    return mods().some((m) => {
       const r = c.runs[m];
       const okDate = r && (r.last_ok_date || (r.run_status === "ok" && r.last_run_date));
       return okDate && String(okDate).slice(0, 10) < iso;
     });
   };
+  const byMatch = (c) => !f.by || mods().some((m) => c.runs[m] && c.runs[m].run_by === f.by);
+  const dateMatch = (c) => (!dr.from && !dr.to) ||
+    mods().some((m) => c.runs[m] && dfPass(c.runs[m].last_run_date, dr));
 
   let page = 0;
   const render = () => {
     const list = clients.filter((c) =>
-      (!dataQ || c.name.toLowerCase().includes(dataQ)) &&
-      (vendor === "all" || c.vendor === vendor) &&
-      (!gapsOnly || hasGap(c)) &&
-      (!staleDays || isStale(c, staleDays)));
+      (!dataQ || c.name.toLowerCase().includes(dataQ) || String(c.fein).includes(dataQ)) &&
+      (!f.vendor || c.vendor === f.vendor) &&
+      stateMatch(c) && staleMatch(c) && byMatch(c) && dateMatch(c));
     const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
-        <th>Client</th>${API_MODULES.map(([, h]) => `<th>${h}</th>`).join("")}
+        <th>Client</th>${API_MODULES.map(([m, h]) =>
+          `<th${f.module === m ? ' class="col-hl"' : ""}>${h}</th>`).join("")}
       </tr></thead><tbody>${pg.rows.map((c) => `<tr>
-        <td><b>${esc(c.name)}</b><div class="muted" style="font-size:11px">${esc(c.vendor || "")}</div></td>
-        ${API_MODULES.map(([m]) => cell(c.runs[m])).join("")}</tr>`).join("") ||
+        <td><a href="javascript:void 0" data-log="${esc(c.fein)}" data-mod=""><b>${esc(c.name)}</b></a>
+          <div class="muted" style="font-size:11px">${esc(c.vendor || "")}</div></td>
+        ${API_MODULES.map(([m]) => cell(c, m)).join("")}</tr>`).join("") ||
       `<tr><td colspan="${API_MODULES.length + 1}" class="muted">No clients match.</td></tr>`}</tbody></table></div>` +
       pagerHtml("api", pg.p, pg.pages, list.length);
     hookPager("api", (d) => { page += d; render(); });
+    $("#data-body").querySelectorAll("[data-log]").forEach((el) => (el.onclick = () => {
+      const c = byClient.get(el.dataset.log);
+      apiLogDrawer({ fein: c.fein, name: c.name, vendor: c.vendor }, el.dataset.mod || "");
+    }));
     $("#data-count").textContent = `${list.length} of ${clients.length} clients`;
   };
   render.reset = () => { page = 0; };
-  $("#api-vendor").onchange = (e) => { vendor = e.target.value; page = 0; render(); };
-  $("#api-gaps").onchange = (e) => { gapsOnly = e.target.checked; page = 0; render(); };
-  $("#api-stale").onchange = (e) => { staleDays = Number(e.target.value); page = 0; render(); };
+  const bind = (id, key, num) => ($(id).onchange = (e) => {
+    f[key] = num ? Number(e.target.value) : e.target.value; page = 0; render(); });
+  bind("#api-vendor", "vendor"); bind("#api-module", "module"); bind("#api-state", "state");
+  bind("#api-by", "by"); bind("#api-stale", "stale", true);
+  wireDateFilter("apir", dr, () => { page = 0; render(); });
+  $("#api-clear").onclick = () => { dataQ = ""; Views.renderData($("#view"), "api"); };
   return render;
+}
+
+/* --- Run log drawer: the Streamlit "Onboarding API Run Logs" tool, inside
+   the CRM. Reads go through prod-refresh (a browser cannot reach the
+   onboarding backend) under the reader's OWN Uzio sign-in — CRM and Uzio are
+   separate logins, and prod's audit should name whoever looked. The password
+   is sent once to mint a token; only the token is kept, in sessionStorage,
+   so it dies with the tab. --- */
+const OB_TOKEN_KEY = "uzio_ob_token", OB_USER_KEY = "uzio_ob_user";
+const ssGet = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const ssSet = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch { /* private mode */ } };
+
+async function callProdFn(body) {
+  const k = Object.keys(localStorage).find((x) => x.startsWith("sb-") && x.endsWith("-auth-token"));
+  const token = k ? (JSON.parse(localStorage[k]) || {}).access_token : null;
+  if (!token) throw new Error("You are signed out of the CRM — reload and sign in again.");
+  const res = await fetch(PROD_REFRESH_URL, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (out.needLogin) { ssSet(OB_TOKEN_KEY, null); const e = new Error(out.error || "Sign in to Uzio"); e.needLogin = true; throw e; }
+  if (!res.ok) throw new Error(out.error || ("HTTP " + res.status));
+  return out;
+}
+
+const istFmt = (iso, withYear) => iso ? new Date(iso).toLocaleString("en-IN", {
+  timeZone: "Asia/Kolkata", day: "2-digit", month: "short", ...(withYear ? { year: "numeric" } : {}),
+  hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+const modLabel = (m) => (API_MODULES.find(([k]) => k === m) || [m, m])[1];
+const RUN_PILL = { OK: ["OK", "pill-done"], FAIL: ["Failed", "pill-cancelled"], NOTHING: ["Nothing processed", "pill-onhold"],
+  RUNNING: ["Running", "pill-progress"], NO_RESULT: ["No result", "pill-onhold"] };
+
+function apiLogDrawer(client, module) {
+  document.getElementById("log-drawer")?.remove();
+  const d = document.createElement("div");
+  d.id = "log-drawer";
+  d.innerHTML = `<div class="ld-backdrop"></div><aside class="ld-panel" role="dialog" aria-label="API run log">
+    <div class="ld-head"><div><h2 style="margin:0">${esc(client.name)}</h2>
+      <span class="muted" style="font-size:12px">${esc(client.vendor || "")} · FEIN ${esc(client.fein)} · run log</span></div>
+      <button type="button" class="linkish ld-x" aria-label="Close">✕</button></div>
+    <div class="ld-body"></div></aside>`;
+  document.body.appendChild(d);
+  const body = d.querySelector(".ld-body");
+  const close = () => { d.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  d.querySelector(".ld-x").onclick = close;
+  d.querySelector(".ld-backdrop").onclick = close;
+
+  let runs = null, pick = module || "";
+
+  const fail = (e) => {
+    if (e.needLogin) return showLogin(e.message);
+    body.insertAdjacentHTML("beforeend", `<p class="overdue">${esc(e.message)}</p>`);
+  };
+
+  const showLogin = (msg, typedUser) => {
+    body.innerHTML = `<div class="card" style="box-shadow:none;background:var(--surface-cont-low)">
+      <h2 style="margin-top:0">Sign in with your Uzio login</h2>
+      <p class="muted" style="font-size:13px;margin-top:0">This is your Uzio platform account, not the CRM one.
+        It is used once to open a read-only session; the password is not stored, and every read is
+        audited in prod under your name. The session ends when you close this tab.</p>
+      ${msg ? `<p class="overdue" style="font-size:13px">${esc(msg)}</p>` : ""}
+      <form id="ld-login" style="display:flex;flex-direction:column;gap:10px">
+        <input id="ld-u" type="email" autocomplete="username" placeholder="firstname.lastname@uzio.com" required style="max-width:none">
+        <input id="ld-p" type="password" autocomplete="current-password" placeholder="Uzio password" required style="max-width:none">
+        <button type="submit">Sign in</button>
+      </form></div>`;
+    $("#ld-u").value = typedUser || ssGet(OB_USER_KEY) || "";
+    ($("#ld-u").value ? $("#ld-p") : $("#ld-u")).focus();
+    $("#ld-login").onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector("button"); btn.disabled = true; btn.textContent = "Signing in…";
+      const pw = $("#ld-p"); const password = pw.value; pw.value = "";
+      const username = $("#ld-u").value.trim();
+      try {
+        const out = await callProdFn({ action: "ob_login", username, password, fein: client.fein });
+        ssSet(OB_TOKEN_KEY, out.token); ssSet(OB_USER_KEY, out.user);
+        loadRuns();
+      } catch (err) { showLogin(err.message, username); }
+    };
+  };
+
+  const loadRuns = async () => {
+    body.innerHTML = `<p class="muted">Reading the onboarding log…</p>`;
+    try {
+      const out = await callProdFn({ action: "api_runs", fein: client.fein, obToken: ssGet(OB_TOKEN_KEY) });
+      runs = out.runs || [];
+      renderRuns();
+    } catch (e) { body.innerHTML = ""; fail(e); }
+  };
+
+  const signedIn = () => `<div class="muted" style="font-size:12px;display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      Uzio: <b>${esc(ssGet(OB_USER_KEY) || "")}</b>
+      <button type="button" class="linkish" id="ld-reload" style="font-size:12px">Reload</button>
+      <button type="button" class="linkish" id="ld-out" style="font-size:12px">Sign out of Uzio</button></div>`;
+
+  const renderRuns = () => {
+    if (!runs.length) { body.innerHTML = signedIn() + `<p class="muted">Nothing has ever been pushed for this client.</p>`; wireTop(); return; }
+    // Latest run per API = the state the client is in now (runs come newest first).
+    const latest = {};
+    runs.forEach((r) => Object.keys(r.modules).forEach((m) => {
+      if (!latest[m]) latest[m] = { run: r, n: r.modules[m], count: 0 };
+      latest[m].count++;
+    }));
+    const order = Object.keys(latest).sort((a, b) => {
+      const ia = API_MODULES.findIndex(([k]) => k === a), ib = API_MODULES.findIndex(([k]) => k === b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    const inflight = runs.filter((r) => r.status === "RUNNING");
+    const died = runs.filter((r) => r.status === "NO_RESULT");
+    const card = (m) => {
+      const { run, n, count } = latest[m];
+      const [t, , fl] = n;
+      const tone = t === 0 ? "warn" : fl ? "bad" : "ok";
+      const line = t === 0 ? "last run processed nobody" : fl ? `<b>${fl} of ${t} failed</b>` : `all ${t} went through`;
+      return `<button type="button" class="ld-card ld-${tone}${pick === m ? " sel" : ""}" data-pick="${m}">
+        <span class="ld-api">${esc(modLabel(m))}</span>
+        <span>${line}</span>
+        <span class="muted" style="font-size:12px">${istFmt(run.start)} IST · ${esc(run.by)} · ${count} run${count === 1 ? "" : "s"}</span></button>`;
+    };
+    body.innerHTML = signedIn() +
+      inflight.map((r) => `<div class="ld-banner">⏳ Run ${r.id} is still going (started ${istFmt(r.start)} IST by ${esc(r.by)}). Its API shows up once it finishes.</div>`).join("") +
+      (died.length ? `<div class="ld-banner muted">${died.length} earlier run(s) never wrote a result — they died partway and are not counted.</div>` : "") +
+      `<div class="ld-cards">${order.map(card).join("")}</div><div id="ld-runs"></div>`;
+    wireTop();
+    body.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => { pick = b.dataset.pick; renderRuns(); }));
+    if (pick && latest[pick]) renderModuleRuns(pick);
+    else if (pick) $("#ld-runs").innerHTML = `<p class="muted">${esc(modLabel(pick))} has never been run for this client.</p>`;
+  };
+
+  const wireTop = () => {
+    const r = $("#ld-reload"); if (r) r.onclick = loadRuns;
+    const o = $("#ld-out"); if (o) o.onclick = () => { ssSet(OB_TOKEN_KEY, null); showLogin(); };
+  };
+
+  const renderModuleRuns = (m) => {
+    const list = runs.filter((r) => r.modules[m]);
+    const status = (r) => {
+      const [t, , fl] = r.modules[m];
+      if (r.status === "RUNNING" || r.status === "NO_RESULT") return RUN_PILL[r.status];
+      return t === 0 ? RUN_PILL.NOTHING : fl ? [`${fl} failed`, "pill-cancelled"] : RUN_PILL.OK;
+    };
+    // Land on the newest attempt that failed — that is the one being chased.
+    const firstFail = list.find((r) => r.modules[m][2] > 0) || list[0];
+    $("#ld-runs").innerHTML = `<h2>${esc(modLabel(m))} — ${list.length} run${list.length === 1 ? "" : "s"}</h2>
+      <table class="grid"><thead><tr><th>Run</th><th>When (IST)</th><th>By</th><th>Total</th><th>OK</th><th>Fail</th><th>Result</th></tr></thead>
+      <tbody>${list.map((r) => { const [t, ok, fl] = r.modules[m]; const [lab, cls] = status(r);
+        return `<tr class="rowlink" data-run="${r.id}"><td>${r.id}</td><td>${istFmt(r.start, true)}</td><td>${esc(r.by)}</td>
+          <td>${t}</td><td>${ok}</td><td>${fl ? `<span class="overdue">${fl}</span>` : 0}</td><td>${dpill(lab, cls)}</td></tr>`; }).join("")}</tbody></table>
+      <div id="ld-detail"></div>`;
+    $("#ld-runs").querySelectorAll("[data-run]").forEach((tr) => (tr.onclick = () => loadDetail(Number(tr.dataset.run), m)));
+    if (firstFail) loadDetail(firstFail.id, m);
+  };
+
+  const loadDetail = async (runId, m) => {
+    $("#ld-runs").querySelectorAll("[data-run]").forEach((tr) => tr.classList.toggle("sel", Number(tr.dataset.run) === runId));
+    const box = $("#ld-detail");
+    box.innerHTML = `<p class="muted">Reading run ${runId}…</p>`;
+    try {
+      const out = await callProdFn({ action: "api_run_detail", runId, obToken: ssGet(OB_TOKEN_KEY) });
+      const mine = (x) => x.module === m || !x.module;
+      const errs = out.errors.rows.filter(mine), warns = out.warnings.rows.filter(mine);
+      const gErr = out.errors.grouped.filter(mine), gWarn = out.warnings.grouped.filter(mine);
+      const r = out.run;
+      const grp = (g) => `<table class="grid"><thead><tr><th>Employees</th><th>Reason</th><th>e.g.</th></tr></thead><tbody>${
+        g.map((x) => `<tr><td><b>${x.count}</b></td><td>${esc(x.reason)}${x.type ? ` <span class="tag">${esc(x.type)}</span>` : ""}</td>
+          <td class="muted" style="font-size:12px">${esc(x.sample.join(", "))}${x.count > x.sample.length ? " …" : ""}</td></tr>`).join("")}</tbody></table>`;
+      const every = (rows) => `<table class="grid"><thead><tr><th>Row</th><th>Employee ID</th><th>Reason</th></tr></thead><tbody>${
+        rows.map((x) => `<tr><td>${x.row ?? ""}</td><td>${esc(x.employeeId ?? "")}</td><td>${esc(x.reason)}</td></tr>`).join("")}</tbody></table>`;
+      const capped = out.errors.total > out.rawCap || out.warnings.total > out.rawCap;
+      box.innerHTML = `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-top:14px">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <b>Run ${r.id}</b>${dpill(...(RUN_PILL[r.status] || [r.status, "pill-na"]))}
+          <span class="muted" style="font-size:12px">${istFmt(r.start, true)} IST · by ${esc(r.by)}${r.tookSec != null ? ` · took ${Math.floor(r.tookSec / 60)}:${String(r.tookSec % 60).padStart(2, "0")}` : ""}</span>
+          <span style="flex:1"></span>
+          ${errs.length || warns.length ? `<button type="button" class="small secondary" id="ld-csv">Download CSV</button>` : ""}
+        </div>
+        ${!r.end ? `<p class="muted" style="font-size:13px">No end time: this run is still going, or died without writing a result.</p>` : ""}
+        ${errs.length ? `<h2>${errs.length} employee${errs.length === 1 ? "" : "s"} did not go through</h2>
+          <p class="muted" style="font-size:12px;margin-top:-4px">Same reason, one line — fix the reason and they all clear.</p>${grp(gErr)}
+          <details class="cgroup"><summary>Every employee (${errs.length})</summary><div style="padding:0 14px 12px;max-height:340px;overflow:auto">${every(errs)}</div></details>`
+          : `<p style="margin:12px 0 0">No per-employee failures were written for ${esc(modLabel(m))} in this run.</p>`}
+        ${warns.length ? `<details class="cgroup"><summary>Warnings — these went through anyway (${warns.length})</summary>
+          <div style="padding:0 14px 12px">${grp(gWarn)}</div></details>` : ""}
+        ${capped ? `<p class="muted" style="font-size:12px">Very large run: the employee list is cut at ${out.rawCap} rows; the grouped counts above are complete.</p>` : ""}
+      </div>`;
+      const csv = $("#ld-csv");
+      if (csv) csv.onclick = () => {
+        const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        const lines = [["Kind", "API", "Row", "Employee ID", "Type", "Reason"].join(",")]
+          .concat(errs.map((x) => ["Error", modLabel(m), x.row, x.employeeId, x.type, x.reason].map(q).join(",")))
+          .concat(warns.map((x) => ["Warning", modLabel(m), x.row, x.employeeId, x.type, x.reason].map(q).join(",")));
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+        a.download = `${client.name.replace(/[^\w]+/g, "_")}_${modLabel(m)}_run_${r.id}.csv`;
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      };
+    } catch (e) {
+      if (e.needLogin) return showLogin(e.message);
+      box.innerHTML = `<p class="overdue">${esc(e.message)}</p>`;
+    }
+  };
+
+  ssGet(OB_TOKEN_KEY) ? loadRuns() : showLogin();
 }
 
 /* --- Payroll Health: does prior data + Uzio runs cover pay periods gaplessly. --- */
 async function healthTab() {
   const rows = await Store.listPayrollHealth();
-  let status = "all";
+  let status = "all", prev = "", gapsOnly = false;
+  const dc = { from: "", to: "" };   // checked date
   const statuses = [...new Set(rows.map((r) => r.status).filter(Boolean))].sort();
+  const prevs = [...new Set(rows.map((r) => r.previous_system).filter(Boolean))].sort();
   $("#data-extra").innerHTML = `<select id="ph-status"><option value="all">All statuses</option>
-    ${statuses.map((s) => `<option>${esc(s)}</option>`).join("")}</select>`;
+    ${statuses.map((s) => `<option>${esc(s)}</option>`).join("")}</select>
+    <select id="ph-prev"><option value="">All previous systems</option>
+    ${prevs.map((s) => `<option>${esc(s)}</option>`).join("")}</select>
+    <label class="chk"><input type="checkbox" id="ph-gaps"> Handover gap</label>
+    <span class="muted" style="font-size:12px">Checked</span>${dfHtml("phc", dc)}`;
   $("#data-extra").appendChild(refreshControl(["payroll_health", "push_to_crm"]));
   const pillCls = (s) => s === "Covered" ? "pill-done" : s === "New to platform" ? "pill-na"
     : s === "Handover gap" ? "pill-onhold" : "pill-cancelled";
@@ -333,7 +590,10 @@ async function healthTab() {
   const render = () => {
     const list = rows.filter((r) =>
       (!dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ)) &&
-      (status === "all" || r.status === status));
+      (status === "all" || r.status === status) &&
+      (!prev || r.previous_system === prev) &&
+      (!gapsOnly || r.handover_gap) &&
+      dfPass(r.checked_date, dc));
     const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th><th>Prev system</th><th>Prior payroll data</th><th>Uzio runs</th><th>Gap</th><th>Status</th><th>Checked</th>
@@ -353,18 +613,40 @@ async function healthTab() {
   };
   render.reset = () => { page = 0; };
   $("#ph-status").onchange = (e) => { status = e.target.value; page = 0; render(); };
+  $("#ph-prev").onchange = (e) => { prev = e.target.value; page = 0; render(); };
+  $("#ph-gaps").onchange = (e) => { gapsOnly = e.target.checked; page = 0; render(); };
+  wireDateFilter("phc", dc, () => { page = 0; render(); });
   return render;
 }
 
 /* --- Data Coverage: % of active employees with each data element, from prod. --- */
 async function coverageTab() {
   const rows = await Store.listDataCoverage();
-  $("#data-extra").innerHTML = "";
+  const FIELDS = [["active_with_payment_method", "Payment method"], ["active_with_emergency_contact", "Emergency contact"],
+    ["active_with_licence", "Licence"], ["active_with_worker_comp", "Worker comp"]];
+  let field = "", below = 0, minEmp = 0;
+  $("#data-extra").innerHTML = `
+    <select id="cv-field"><option value="">Any field</option>
+      ${FIELDS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+    <select id="cv-below">
+      <option value="0">Any coverage</option><option value="100">below 100%</option>
+      <option value="90">below 90%</option><option value="75">below 75%</option><option value="50">below 50%</option>
+    </select>
+    <select id="cv-min"><option value="0">Any size</option><option value="25">25+ active employees</option>
+      <option value="100">100+ active employees</option></select>`;
   $("#data-extra").appendChild(refreshControl(["data_coverage", "push_to_crm"]));
+  // With no field picked, "below N%" means any of the four is under N.
+  const covMatch = (r) => {
+    if (!below) return true;
+    const a = r.active_employees;
+    if (!a) return false;
+    return (field ? [field] : FIELDS.map(([k]) => k)).some((k) => (dpct(r[k], a) ?? 0) < below);
+  };
   let page = 0;
   const render = () => {
     const list = rows.filter((r) =>
-      !dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ));
+      (!dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ)) &&
+      covMatch(r) && (r.active_employees ?? 0) >= minEmp);
     const pg = pageSlice(list, page); page = pg.p;
     $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
         <th>Client</th><th>Employees</th><th>Payment method</th><th>Emergency contact</th><th>Licence</th><th>Worker comp</th>
@@ -384,6 +666,9 @@ async function coverageTab() {
     $("#data-count").textContent = `${list.length} of ${rows.length} clients`;
   };
   render.reset = () => { page = 0; };
+  $("#cv-field").onchange = (e) => { field = e.target.value; page = 0; render(); };
+  $("#cv-below").onchange = (e) => { below = Number(e.target.value); page = 0; render(); };
+  $("#cv-min").onchange = (e) => { minEmp = Number(e.target.value); page = 0; render(); };
   return render;
 }
 
@@ -395,7 +680,12 @@ async function docsTab() {
   const [transfers, counts] = await Promise.all([
     Store.listDocumentTransfers(), Store.listDocumentCounts()]);
   const dft = { from: "", to: "" };   // transfer_date range
-  $("#data-extra").innerHTML = dfHtml("doct", dft);
+  let tStatus = "", failedOnly = false;
+  const tStatuses = [...new Set(transfers.map((r) => r.status).filter(Boolean))].sort();
+  $("#data-extra").innerHTML = `<select id="dt-status"><option value="">All transfer statuses</option>
+      ${tStatuses.map((s) => `<option>${esc(s)}</option>`).join("")}</select>
+    <label class="chk"><input type="checkbox" id="dt-failed"> Has failed docs</label>
+    <span class="muted" style="font-size:12px">Transferred</span>${dfHtml("doct", dft)}`;
   // Only the counted half: the transfer columns come from the completion
   // mails, which no prod query can rebuild.
   $("#data-extra").appendChild(refreshControl(["document_counts", "push_to_crm"]));
@@ -411,6 +701,8 @@ async function docsTab() {
   const render = () => {
     const t = transfers.filter((r) =>
       (!dataQ || r.client_name.toLowerCase().includes(dataQ)) &&
+      (!tStatus || r.status === tStatus) &&
+      (!failedOnly || r.failed_docs > 0) &&
       dfPass(r.transfer_date, dft));
     const c = counts.filter((r) =>
       !dataQ || (r.company_name + " " + (r.dsp_short_code || "")).toLowerCase().includes(dataQ));
@@ -445,6 +737,8 @@ async function docsTab() {
   };
   render.reset = () => { pageT = 0; pageC = 0; };
   wireDateFilter("doct", dft, () => { pageT = 0; render(); });
+  $("#dt-status").onchange = (e) => { tStatus = e.target.value; pageT = 0; render(); };
+  $("#dt-failed").onchange = (e) => { failedOnly = e.target.checked; pageT = 0; render(); };
   return render;
 }
 
@@ -609,11 +903,17 @@ async function histTab() {
   const gone = oos.filter((o) => !(o.reason || "").toLowerCase().includes("hold"));
   const pct = (c) => { const exp = c.received + c.pending; return exp ? Math.round(c.received / exp * 100) : 0; };
 
-  let show = "all", scanBefore = "";
+  let show = "all", scanBefore = "", hVendor = "", hImpl = "";
+  const hVendors = [...new Set(clients.map((c) => c.vendor).filter(Boolean))].sort();
+  const hImpls = [...new Set(clients.map((c) => c.implementor).filter(Boolean))].sort();
   $("#data-extra").innerHTML = `<select id="h-filter">
     <option value="all">All clients</option>
     <option value="open">Still collecting</option>
     <option value="done">Complete</option></select>
+    <select id="h-vendor"><option value="">All vendors</option>
+      ${hVendors.map((v) => `<option>${esc(v)}</option>`).join("")}</select>
+    <select id="h-impl"><option value="">All implementors</option>
+      ${hImpls.map((v) => `<option>${esc(v)}</option>`).join("")}</select>
     <label style="display:inline-flex;align-items:center;gap:5px" class="muted">scanned before
       <input type="date" id="h-scanbefore" style="max-width:150px"></label>`;
 
@@ -627,6 +927,7 @@ async function histTab() {
     const list = clients.filter((c) =>
       (!dataQ || (c.dsp_name + " " + c.dsp_short_code).toLowerCase().includes(dataQ)) &&
       (show === "all" || (show === "done" ? c.pending === 0 : c.pending > 0)) &&
+      (!hVendor || c.vendor === hVendor) && (!hImpl || c.implementor === hImpl) &&
       // "scanned before X" is a staleness hunt: never-scanned counts as stale.
       (!scanBefore || !c.last_scanned || String(c.last_scanned).slice(0, 10) < scanBefore))
       .sort((a, b) => pct(b) - pct(a) || a.dsp_name.localeCompare(b.dsp_name));
@@ -656,5 +957,7 @@ async function histTab() {
   render.reset = () => { page = 0; };
   $("#h-filter").onchange = (e) => { show = e.target.value; page = 0; render(); };
   $("#h-scanbefore").onchange = (e) => { scanBefore = e.target.value; page = 0; render(); };
+  $("#h-vendor").onchange = (e) => { hVendor = e.target.value; page = 0; render(); };
+  $("#h-impl").onchange = (e) => { hImpl = e.target.value; page = 0; render(); };
   return render;
 }

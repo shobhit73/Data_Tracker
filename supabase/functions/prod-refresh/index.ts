@@ -46,9 +46,17 @@
  *   { "jobs": ["work_locations"], "dryRun": true }
  * `jobs` omitted runs all of them. Jobs are independent: one failing is
  * reported and the rest still run, the same as the Python runner it replaces.
+ *
+ *   { "action": "ob_login", "username": "...", "password": "...", "fein": "..." }
+ *   { "action": "api_runs", "fein": "123456789", "obToken": "..." }
+ *   { "action": "api_run_detail", "runId": 4521, "obToken": "..." }
+ * Read-only onboarding log lookups for the CRM's API Activity drawer, under
+ * the reader's own Uzio sign-in; see logs.ts. An `action` body never runs a job.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { JOBS, type JobCtx, type JobResult } from './jobs.ts';
+import { apiRuns, apiRunDetail, obLogin } from './logs.ts';
+import { OnboardingAuthError } from './prodQuery.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -125,12 +133,46 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- what to run --------------------------------------------------------
-  let body: { jobs?: string[]; dryRun?: boolean; taskEvidenceCap?: number } = {};
+  let body: { jobs?: string[]; dryRun?: boolean; taskEvidenceCap?: number;
+              action?: string; fein?: string; runId?: number;
+              username?: string; password?: string; obToken?: string } = {};
   try {
     const text = await req.text();
     if (text.trim()) body = JSON.parse(text);
   } catch {
     return json({ error: 'body must be JSON' }, 400);
+  }
+
+  // --- read-only log lookups (logs.ts) -------------------------------------
+  // Same auth as the jobs; nothing below writes. The caller is logged with the
+  // queryIds because prod's audit only ever sees this function's account.
+  if (body.action) {
+    // NEVER log `body` here: on ob_login it carries a password.
+    if (email === 'cron@daily-schedule') return json({ error: 'log reads need a person' }, 403);
+    try {
+      if (body.action === 'ob_login') {
+        const out = await obLogin(body.username, body.password,
+          [String(body.fein ?? ''), Deno.env.get('ONBOARDING_FEIN') ?? '']);
+        console.log(`uzio sign-in for log viewer: crm=${email} uzio=${out.user}`);
+        return json(out);
+      }
+      const reads: Record<string, (ob: { token: string }) => Promise<{ queryIds?: string[] }>> = {
+        api_runs: (ob) => apiRuns(ob, body.fein),
+        api_run_detail: (ob) => apiRunDetail(ob, body.runId),
+      };
+      const h = reads[body.action];
+      if (!h) return json({ error: `unknown action: ${body.action}` }, 400);
+      if (!body.obToken) return json({ error: 'sign in to Uzio first', needLogin: true }, 401);
+      const out = await h({ token: body.obToken });
+      console.log(`log read by ${email}: ${body.action} fein=${body.fein ?? '-'} run=${body.runId ?? '-'} ` +
+                  `queryIds=${(out.queryIds ?? []).join(',')}`);
+      return json({ ranBy: email, ...out });
+    } catch (e) {
+      if (e instanceof OnboardingAuthError) {
+        return json({ error: e.message, needLogin: true }, 401);
+      }
+      return json({ error: (e as Error).message }, 400);
+    }
   }
 
   const names = body.jobs?.length ? body.jobs : Object.keys(JOBS);

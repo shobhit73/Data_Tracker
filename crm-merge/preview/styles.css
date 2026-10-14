@@ -270,6 +270,41 @@ details.cgroup table.grid { border: none; border-radius: 0; }
    the middle. Pushing the count right instead keeps it next to the button and
    leaves the heading where it was. Scoped to this page so no other page-head
    moves. */
+/* Data filters: the per-tab controls join the search box's flex row instead
+   of wrapping inside their own inline span (which stacked them). */
+#data-extra { display: contents; }
+.filter-bar .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  padding: 7px 12px; border: 1px solid var(--outline); border-radius: var(--r-sm); background: #fff; cursor: pointer; }
+.filter-bar .chk input { margin: 0; }
+td.logcell { cursor: pointer; }
+td.logcell:hover .pill { outline: 2px solid var(--brand); outline-offset: 1px; }
+.grid th.col-hl { background: var(--sec-cont); color: var(--on-sec-cont); }
+
+/* API run log drawer (apiLogDrawer). */
+#log-drawer .ld-backdrop { position: fixed; inset: 0; background: rgba(29, 27, 32, .35); z-index: 30; }
+#log-drawer .ld-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100vw);
+  background: var(--bg); z-index: 31; box-shadow: var(--e3); display: flex; flex-direction: column;
+  border-radius: var(--r-xl) 0 0 var(--r-xl); }
+.ld-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  padding: 20px 24px 12px; border-bottom: 1px solid var(--line); }
+.ld-x { font-size: 18px; }
+.ld-body { padding: 16px 24px 24px; overflow-y: auto; flex: 1; }
+.ld-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.ld-card { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 12px 14px;
+  border-radius: var(--r-md); border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-weight: 400; font-size: 13px; box-shadow: none; }
+.ld-card:hover:not(:disabled) { box-shadow: var(--e1); filter: none; }
+.ld-card .ld-api { font-weight: 600; font-size: 14px; }
+.ld-card.ld-ok { border-left: 4px solid var(--ok); }
+.ld-card.ld-bad { border-left: 4px solid var(--bad); }
+.ld-card.ld-warn { border-left: 4px solid var(--warn); }
+.ld-card.sel { background: var(--sec-cont); color: var(--on-sec-cont); border-color: var(--brand); }
+.ld-banner { background: #fdf3d7; color: #7a5c00; border-radius: var(--r-sm); padding: 8px 12px;
+  font-size: 13px; margin-bottom: 10px; }
+.ld-banner.muted { background: var(--surface-cont-high); color: var(--muted); }
+#ld-runs tr.sel { background: var(--sec-cont); }
+@media (max-width: 760px) { #log-drawer .ld-panel { border-radius: 0; } }
+
 .page-head #data-count { margin-left: auto; }
 .page-head .refresh-control { margin-left: 12px; }
 

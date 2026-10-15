@@ -189,7 +189,10 @@ function wireClientRows(view) {
 }
 
 Views.renderToday = async (view) => {
-  const [clients, lastAct] = await Promise.all([Store.listClients(), Store.listLastActivity()]);
+  const soft = (p) => p.catch((e) => { console.warn("Today:", e.message); return []; });
+  const [clients, lastAct, sysRows, apiRows, profRows] = await Promise.all([
+    Store.listClients(), Store.listLastActivity(),
+    soft(Store.listSystemActivity()), soft(Store.listApiActivity()), soft(Store.listClientProfiles())]);
   const lastByClient = Object.fromEntries(lastAct.map((r) => [r.client_id, r.last_activity]));
   const active = clients.filter((c) => c.status !== "Completed" && c.status !== "Cancelled");
   const openish = (t) => t.status === "Open" || t.status === "In Progress";
@@ -222,6 +225,31 @@ Views.renderToday = async (view) => {
     .sort((a, b) => (quietDays(b) ?? 9e9) - (quietDays(a) ?? 9e9));
 
   const clientLink = (c) => `<a href="#client/${c.id}">${esc(c.dsp_name)}</a>`;
+
+  // Prior payroll window (Data team): see priorPayrollState in views-data.js.
+  const sysBy = Object.fromEntries(sysRows.map((s) => [s.dsp_short_code, s]));
+  const feinBy = Object.fromEntries(profRows.filter((p) => p.fein).map((p) => [p.dsp_short_code, String(p.fein)]));
+  const apiBy = {};
+  apiRows.forEach((r) => { (apiBy[r.fein] = apiBy[r.fein] || {})[r.module_key] = r; });
+  const seenFein = new Set();
+  const prior = clients.map((c) => {
+    const s = sysBy[c.short_code];
+    const fein = feinBy[c.short_code] || (s && s.fein ? String(s.fein) : "");
+    if (!fein || seenFein.has(fein)) return null;   // one row per company, not per CRM duplicate
+    const st = priorPayrollState(c, s, apiBy[fein]);
+    if (st) seenFein.add(fein);
+    return st && { c, st };
+  }).filter(Boolean);
+  const priorOpen = prior.filter((x) => x.st.phase === "window").sort((a, b) => a.st.daysLeft - b.st.daysLeft);
+  const priorNext = prior.filter((x) => x.st.phase === "next");
+  const tick = (d) => d ? `<span class="pill pill-done">✓ ${esc(String(d).slice(5, 10))}</span>` : `<span class="muted">—</span>`;
+  const priorRows = priorOpen.map(({ c, st }) => `<tr>
+      <td>${clientLink(c)}</td><td>${fmtDate(st.start)}</td><td>${fmtDate(st.due)}</td><td>${priorLeftHtml(st)}</td>
+      <td>${tick(st.census)}</td><td>${tick(st.payment)}</td><td>${tick(st.deductions)}</td>
+      <td>${st.priorTried ? `<span class="pill pill-onhold" title="last attempt ${esc(st.priorTried.last_run_date || "")}">${esc(st.priorTried.run_status || "tried")}</span>` : `<span class="muted">not run</span>`}</td></tr>`)
+    .concat(priorNext.map(({ c, st }) => `<tr class="muted">
+      <td>${clientLink(c)}</td><td colspan="3"><span class="muted">Waiting for the first punch — the week starts then</span></td>
+      <td>${tick(st.census)}</td><td>${tick(st.payment)}</td><td>${tick(st.deductions)}</td><td><span class="muted">—</span></td></tr>`));
 
   const soonRows = soon.map((c) => `<tr>
       <td>${clientLink(c)}</td><td><b>${countdownLabel(daysUntil(c.tt_live_date))}</b></td>
@@ -273,12 +301,14 @@ Views.renderToday = async (view) => {
     ? `<button type="button" class="tstat ${tone}" data-jump="sec-${id}">${label} <b>${count}</b></button>`
     : "";
 
-  const total = soon.length + overdue.length + unowned.length + atRisk.length + auditGap.length + stale.length;
+  const total = soon.length + overdue.length + unowned.length + atRisk.length + auditGap.length + stale.length + prior.length;
+  const priorLate = priorOpen.filter((x) => x.st.daysLeft <= 0).length;
   view.innerHTML = `<div class="page-head"><h1>Today</h1>
       <span class="muted">${new Date().toDateString()}</span></div>` +
     (total === 0
       ? `<p class="muted" style="font-size:15px">Nothing needs attention. 🎉</p>`
       : `<div class="today-strip">` +
+          chip("prior", "Prior payroll", priorOpen.length, priorLate ? "warn" : "amber") +
           chip("soon", "Going live", soon.length, "go") +
           chip("overdue", "Overdue", overdue.length, "warn") +
           chip("unowned", "No implementor", unowned.length, "amber") +
@@ -286,6 +316,8 @@ Views.renderToday = async (view) => {
           chip("gap", "Audit gaps", auditGap.length, "warn") +
           chip("stale", "Gone quiet", stale.length, "") +
         `</div>`) +
+    section("prior", `Prior payroll window <span class="muted" style="font-weight:400;font-size:13px">· Data team · due ${PRIOR_WINDOW_DAYS} days after the first punch</span>`, priorRows,
+      `<th>Client</th><th>First punch</th><th>Due</th><th>Left</th><th>Census</th><th>Payment</th><th>Deductions</th><th>Prior payroll</th>`, true) +
     section("soon", "Going live soon", soonRows,
       `<th>Client</th><th>Countdown</th><th>TT live</th><th>Implementor</th><th>Checklist</th><th>Status</th>`, true) +
     section("overdue", "Overdue", overdueRows,

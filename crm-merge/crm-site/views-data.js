@@ -811,6 +811,33 @@ async function ewaTab() {
   return render;
 }
 
+/* --- Prior payroll window. Once Census + Payment Method are in, the DSP
+   starts punching in Uzio, and the Data team (not the implementor) then has
+   one week to load prior payroll before payroll goes live. The clock starts
+   at the first real punch (client_system_activity.tt_first_live_date, which
+   excludes imported history); the job is done when the Prior Payroll API
+   has run OK. New businesses (vendor "New") have no prior payroll. Agreed
+   with Shobhit, 15 Oct 2026. --- */
+const PRIOR_WINDOW_DAYS = 7;
+function priorPayrollState(client, sys, apiByModule) {
+  if (!client || !["ADP", "Paycom"].includes(client.vendor) || client.status === "Cancelled") return null;
+  const ok = (m) => { const r = (apiByModule || {})[m]; return r && (r.last_ok_date || (r.run_status === "ok" && r.last_run_date)) || null; };
+  if (ok("PriorPayroll")) return null;
+  const pp = (apiByModule || {}).PriorPayroll;
+  const base = { census: ok("EmployeeCensus"), payment: ok("PaymentMethodSetup"), deductions: ok("EmployeeDeductions"),
+    priorTried: pp && !ok("PriorPayroll") ? pp : null };
+  const start = sys && sys.tt_first_live_date;
+  if (!start) return base.census && base.payment ? { phase: "next", ...base } : null;
+  const due = new Date(start + "T00:00:00"); due.setDate(due.getDate() + PRIOR_WINDOW_DAYS);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return { phase: "window", start, due: localIso(due), daysLeft: Math.round((due - today) / 86400000), ...base };
+}
+function priorLeftHtml(st) {
+  if (st.daysLeft < 0) return `<span class="overdue">${-st.daysLeft}d overdue</span>`;
+  if (st.daysLeft === 0) return `<b class="overdue">Due today</b>`;
+  return `<b>${st.daysLeft}d left</b>`;
+}
+
 /* --- Client 360 platform panel: the ops-dashboard facts for ONE client,
    rendered into #cd-platform at the bottom of the client detail page
    (Phase 4 of the merge). Read-only; empty sections are simply left out, and
@@ -833,13 +860,21 @@ async function loadPlatformPanel(c) {
   const p = b.profile, s = b.sys, cov = b.cov;
 
   /* Header chips: the three-line profile card was overkill for three facts. */
-  if (chipsEl && p) {
-    chipsEl.innerHTML = [
+  const apiMods = {};
+  (b.api || []).forEach((r) => { apiMods[r.module_key] = r; });
+  const pw = priorPayrollState(c, s, apiMods);
+  const pwChip = pw && pw.phase === "window"
+    ? `<span class="pace ${pw.daysLeft < 0 ? "pace-bad" : "pace-warn"}" title="Data team: prior payroll is due one week after the first punch (${esc(pw.start)})">Prior payroll due ${esc(pw.due)} · ${pw.daysLeft < 0 ? -pw.daysLeft + "d overdue" : pw.daysLeft === 0 ? "today" : pw.daysLeft + "d left"}</span>`
+    : pw && pw.phase === "next"
+      ? `<span class="pace pace-na" title="Census and Payment Method are in; the one-week prior payroll window opens at the first punch">Prior payroll: window opens at first punch</span>`
+      : "";
+  if (chipsEl && (p || pwChip)) {
+    chipsEl.innerHTML = pwChip + (p ? [
       p.fein ? `<span class="chip">FEIN ${esc(p.fein)}</span>` : "",
       p.state ? `<span class="chip">${esc(p.state)}</span>` : "",
       p.frequency ? `<span class="chip">Pay ${esc(p.frequency)}</span>` : "",
       p.payroll_live_date ? `<span class="chip">Payroll live ${dmy(p.payroll_live_date)}</span>` : "",
-    ].join("");
+    ].join("") : "");
   }
 
   /* At a glance: one number per topic, each clicking through to its Data tab.

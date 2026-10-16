@@ -12,6 +12,7 @@ const DATA_TABS = [
   ["hist", "Historical"],
   ["ewa", "EWA"],
   ["paysetup", "Payroll setup"],
+  ["taxmap", "Tax mapping"],
 ];
 
 /* Onboarding-API modules in the order they are actually run, not alphabetical. */
@@ -241,7 +242,7 @@ Views.renderData = async (view, tab) => {
     renderBody();
   };
 
-  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab, ewa: ewaTab, paysetup: paySetupTab };
+  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab, ewa: ewaTab, paysetup: paySetupTab, taxmap: taxMapTab };
   renderBody = await renderers[tab]();
   renderBody();
 };
@@ -865,6 +866,94 @@ async function paySetupTab() {
   render.reset = () => { page = 0; };
   const bind = (id, key, prop = "value") => ($(id).onchange = (e) => { f[key] = e.target[prop]; page = 0; render(); });
   bind("#ps-company", "company"); bind("#ps-cat", "cat"); bind("#ps-type", "type"); bind("#ps-disc", "discarded", "checked");
+  return render;
+}
+
+/* --- Tax mapping: how each client's source (ADP/Paycom) tax codes were mapped
+   to Uzio tax codes when prior payroll was loaded, read off the clients' tax
+   mapping files (crm-merge/push_tax_mapping.py). Checked against the states
+   the client actually has work locations in: every such state needs SUTA, and
+   SIT unless the state has no wage income tax. --- */
+const NO_SIT_STATES = new Set(["AK", "FL", "NV", "NH", "SD", "TN", "TX", "WA", "WY"]);
+async function taxMapTab() {
+  const [rows, locs] = await Promise.all([Store.listTaxMapping(), Store.listWorkLocations()]);
+  const locStates = {};
+  locs.forEach((l) => { if (l.state) (locStates[l.dsp_short_code] = locStates[l.dsp_short_code] || new Set()).add(String(l.state).toUpperCase()); });
+  const clients = [...new Map(rows.map((r) => [r.dsp_short_code || r.client_name, r.client_name])).entries()]
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  const states = [...new Set(rows.map((r) => r.state).filter(Boolean))].sort((a, b) => (a === "Federal" ? -1 : b === "Federal" ? 1 : a.localeCompare(b)));
+  // Employee vs employer from the Unique Tax ID (ER_ = employer liability):
+  // ADP files carry "W/H Taxes / Client Side Liabilities", Paycom files carry
+  // nothing, so the tax ID is the one source that reads the same everywhere.
+  const sideOf = (r) => /-ER_/.test(r.unique_tax_id || "") ? "Employer" : "Employee";
+  const kinds = ["Employee", "Employer"];
+
+  /* Per client: work-location states and whether each has SIT / SUTA mapped. */
+  const coverage = (key) => {
+    const mine = rows.filter((r) => (r.dsp_short_code || r.client_name) === key);
+    const has = (st, kind) => mine.some((r) => r.state === st && r.tax_kind === kind);
+    return [...(locStates[key] || [])].sort().map((st) => ({
+      st, sit: NO_SIT_STATES.has(st) ? null : has(st, "SIT"), suta: has(st, "SUTA"),
+    }));
+  };
+  const gapOf = (key) => coverage(key).some((c) => c.sit === false || !c.suta);
+  const covHtml = (key) => {
+    const cov = coverage(key);
+    if (!cov.length) return `<span class="muted">No work locations on record</span>`;
+    return cov.map((c) => {
+      const ok = c.suta && c.sit !== false;
+      const part = (label, v) => v === null ? `${label} n/a` : `${label} ${v ? "✓" : "✗"}`;
+      return dpill(`${c.st}: ${part("SIT", c.sit)} · ${part("SUTA", c.suta)}`, ok ? "pill-done" : "pill-cancelled");
+    }).join(" ");
+  };
+
+  const f = { client: "", state: "", kind: "", gaps: false };
+  $("#data-extra").innerHTML = `
+    <select id="tm-client"><option value="">All clients (${clients.length})</option>
+      ${clients.map(([k, n]) => `<option value="${esc(k)}">${esc(n)}${k !== n ? ` (${esc(k)})` : ""}</option>`).join("")}</select>
+    <select id="tm-state"><option value="">All states</option>
+      ${states.map((s) => `<option>${esc(s)}</option>`).join("")}</select>
+    <select id="tm-kind"><option value="">Employee + employer</option>
+      ${kinds.map((k) => `<option>${esc(k)}</option>`).join("")}</select>
+    <label class="chk" title="Clients with a work-location state that has no SIT or SUTA mapping"><input type="checkbox" id="tm-gaps"> Work-location gaps only</label>`;
+
+  let page = 0;
+  const render = () => {
+    const gapKeys = f.gaps ? new Set(clients.map(([k]) => k).filter(gapOf)) : null;
+    const list = rows.filter((r) => {
+      const key = r.dsp_short_code || r.client_name;
+      return (!dataQ || `${r.client_name} ${r.dsp_short_code} ${r.source_code} ${r.source_name} ${r.uzio_code} ${r.uzio_desc}`.toLowerCase().includes(dataQ)) &&
+        (!f.client || key === f.client) && (!f.state || r.state === f.state) &&
+        (!f.kind || sideOf(r) === f.kind) && (!gapKeys || gapKeys.has(key));
+    });
+    const pg = pageSlice(list, page); page = pg.p;
+    const head = f.client ? (() => {
+      const one = rows.find((r) => (r.dsp_short_code || r.client_name) === f.client) || {};
+      return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:12px">
+        <b>${esc(one.client_name || f.client)}</b>
+        <span class="muted" style="font-size:12px"> · mapping file: ${one.file_url ? `<a href="${esc(one.file_url)}" target="_blank" rel="noopener noreferrer">${esc(one.file_title || "open")}</a>` : esc(one.file_title || "—")}</span>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="muted" style="font-size:12px">Work-location states:</span> ${covHtml(f.client)}</div></div>`;
+    })() : "";
+    $("#data-body").innerHTML = head + `<div style="overflow-x:auto"><table class="grid"><thead><tr>
+        <th>Client</th><th>State</th><th>Source tax code</th><th>Paid by</th><th>Uzio tax code</th><th>Unique tax ID</th><th>Uzio description</th>
+      </tr></thead><tbody>${pg.rows.map((r) => `<tr>
+        <td><b>${esc(r.client_name || "")}</b><div class="muted" style="font-size:11px">${esc(r.dsp_short_code || "")}</div></td>
+        <td>${esc(r.state || "—")}</td>
+        <td><b>${esc(r.source_code || "")}</b> <span class="muted">${esc(r.source_name || "")}</span></td>
+        <td>${esc(sideOf(r))}${r.source_desc ? `<div class="muted" style="font-size:11px">${esc(r.source_desc)}</div>` : ""}</td>
+        <td>${esc(r.uzio_code || "")}</td>
+        <td style="font-family:monospace;font-size:12px">${esc(r.unique_tax_id || "")}</td>
+        <td>${esc(r.uzio_desc || "")}${r.uzio_sub_desc ? `<div class="muted" style="font-size:11px">${esc(r.uzio_sub_desc)}</div>` : ""}</td></tr>`).join("") ||
+      `<tr><td colspan="7" class="muted">${rows.length ? "Nothing matches." : "No tax mappings loaded yet."}</td></tr>`}</tbody></table></div>` +
+      pagerHtml("tm", pg.p, pg.pages, list.length);
+    hookPager("tm", (d) => { page += d; render(); });
+    const gapCount = clients.filter(([k]) => gapOf(k)).length;
+    $("#data-count").textContent = `${list.length} mappings · ${new Set(list.map((r) => r.dsp_short_code || r.client_name)).size} clients · ` +
+      `${gapCount} with a work-location state not mapped`;
+  };
+  render.reset = () => { page = 0; };
+  const bind = (id, key, prop = "value") => ($(id).onchange = (e) => { f[key] = e.target[prop]; page = 0; render(); });
+  bind("#tm-client", "client"); bind("#tm-state", "state"); bind("#tm-kind", "kind"); bind("#tm-gaps", "gaps", "checked");
   return render;
 }
 

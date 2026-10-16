@@ -17,6 +17,9 @@ create table if not exists client_pay_setup (
   checked_date   date
 );
 create index if not exists client_pay_setup_code on client_pay_setup (dsp_short_code);
+-- 16 Oct 2026: the Setup Helper layout ([column, value] pairs) for earnings,
+-- deductions and contributions.
+alter table client_pay_setup add column if not exists helper jsonb;
 alter table client_pay_setup enable row level security;
 drop policy if exists pay_setup_read on client_pay_setup;
 create policy pay_setup_read on client_pay_setup for select to authenticated using (true);

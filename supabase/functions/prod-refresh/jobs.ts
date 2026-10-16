@@ -1585,11 +1585,19 @@ const psFrom = (table: string, joins = '') =>
   `and eo.exchange_id = '${AMAZON_EXCHANGE}' and eo.deleted = 0 ${joins} ` +
   `where coalesce(x.deleted, 0) != 1`;
 const PS_SQL = {
-  earnings: `select eo.client_code, eo.company_name, x.* ${psFrom('ups_company_earning_detail')} ` +
-    `order by eo.client_code, x.display_order, x.id`,
-  deductions: `select eo.client_code, eo.company_name, t.display_name as ded_type, x.* ` +
-    psFrom('ups_company_deduction', 'left join ups_master_deduction_type t on t.id = x.master_ded_type_identifier') +
+  earnings: `select eo.client_code, eo.company_name, x.*, e.earning_type, e.taxability_type, e.paid_earning, ` +
+    `e.time_bounded, e.wage_determination_factor, e.amount_multiplier as master_mult ` +
+    psFrom('ups_company_earning_detail', 'left join ups_earning_detail e on e.id = x.earning_id') +
+    ` order by eo.client_code, x.display_order, x.id`,
+  deductions: `select eo.client_code, eo.company_name, t.display_name as ded_type, m.name as master_name, x.* ` +
+    psFrom('ups_company_deduction', 'left join ups_master_deduction_type t on t.id = x.master_ded_type_identifier ' +
+           'left join ups_master_deduction m on m.id = x.master_ded_identifier') +
     ` order by eo.client_code, x.id`,
+  // The match tiers of a FORMULA contribution ("100% of first 1%; 50% of next 4%").
+  formulas: `select f.contribution_id, f.formula_order, f.company_contribution_limit, f.ee_contribution_limit, ` +
+    `f.formula_value_type from ups_company_formula_detail f join ups_company_contritbution c on c.id = f.contribution_id ` +
+    `join employer_organization eo on eo.ein = c.employer_org_ein and eo.exchange_id = '${AMAZON_EXCHANGE}' ` +
+    `and eo.deleted = 0 where coalesce(f.deleted, 0) != 1 order by f.contribution_id, f.formula_order`,
   contributions: `select eo.client_code, eo.company_name, cd.display_name as linked_deduction, x.* ` +
     psFrom('ups_company_contritbution', 'left join ups_company_deduction cd on cd.id = x.company_deduction_id') +
     ` order by eo.client_code, x.id`,
@@ -1617,6 +1625,76 @@ function settings(pairs: [string, unknown][]) {
 const w2 = (box: unknown, label: unknown) =>
   !box || box === 'NOT_REQUIRED' ? null : `${String(box).replace('BOX', 'Box ')}${label ? ' ' + label : ''}`;
 
+/* Setup Helper layout: the same columns, in the same order and wording, as the
+   Earnings / Deductions / Contributions sheets of Shobhit's Setup Helper output
+   (e.g. "Your Express_UZIO_Setup.xlsx"). Type Code / Type Description there
+   are the source vendor's (ADP/Paycom) codes, which Uzio does not keep; here
+   they carry Uzio's own code and name. Stored as [column, value] pairs so the
+   CRM can render and export them without knowing the layout. */
+const yn = (v: unknown) => (v == null || v === '' ? '' : yes(v) ? 'Yes' : 'No');
+const enumLabel = (v: unknown) => words(v) ?? '';
+const W2 = (box: unknown, label: unknown) =>
+  !box || box === 'NOT_REQUIRED' ? 'Not Required' : `${String(box).replace('BOX', 'Box ')}${label ? ' - ' + label : ''}`;
+// The Setup Helper sheet speaks of retirement plans by their tax treatment.
+const TAX_SIDE: Record<string, string> = { '401k': 'Pre-tax', 'Roth 401k': 'Post Tax', 'Roth IRA': 'Post Tax', 'HSA': 'Pre-tax' };
+const METHOD: Record<string, string> = {
+  FIXED_DOLLAR: 'Fixed $', PERCENT_OF_GROSS_PAY: '% of Gross Pay', PERCENT_OF_NET_PAY: '% of Net Pay',
+  PERCENT_OF_DISPOSABLE_NET_PAY: '% of Disposable Net Pay', FIXED_AMOUNT: 'Fixed $',
+  PERCENTAGE_OF_GROSS_PAY: '% of Gross Pay', FORMULA: 'Formula',
+};
+const RATE_FACTOR: Record<string, string> = { MULTIPLY_OF_RW: 'Multiples of Regular Wage Rate' };
+const num = (v: unknown) => (v == null || v === '' ? '' : String(Number(v)));
+
+function helperEarning(r: Row): [string, string][] {
+  const hourly = yes(r.time_bounded);
+  return [
+    ['Type Code', String(r.earning_code ?? '')], ['Type Description', String(r.name ?? '')],
+    ['Earning Type', enumLabel(r.earning_type)], ['Earning Name', String(r.name ?? '')],
+    ['Display Order', num(r.display_order)], ['Paid Earning', yn(r.paid_earning)],
+    ['Hourly Based Earning', yn(r.time_bounded)],
+    ['Rate Determination Factor', hourly ? (RATE_FACTOR[String(r.wage_determination_factor)] ?? enumLabel(r.wage_determination_factor)) : ''],
+    ['Rate', hourly ? num(r.amount_multiplier ?? r.master_mult) : ''],
+    ['Subject to garnishment disposable income', yn(r.disposable)], ['Subject to Workers Compensation', yn(r.subject_to_wc)],
+    ['Taxability Type', r.taxability_type === 'NON_TAXABLE' ? 'Non-Taxable' : enumLabel(r.taxability_type)],
+    ['Include Bonus in Overtime Calculation', r.earning_type === 'BONUS' ? yn(r.include_in_overtime) : ''],
+    ['Time Off Policy', r.policy_identifier ? 'Linked' : ''], ['W-2 Box', W2(r.w2_box, r.w2_label)],
+  ];
+}
+
+function helperDeduction(r: Row): [string, string][] {
+  const amount = r.deduction_method === 'FIXED_DOLLAR' ? money(r.amount_per_pay) : pct(r.amount_per_pay_percent);
+  // Garnishments carry no schedule in Uzio; they are taken every paycheck.
+  const sched = r.schedule_for_weekly ?? r.schedule_for_biweekly ?? r.schedule_for_semimonthly ?? 'All';
+  const side = TAX_SIDE[String(r.ded_type)] ?? String(r.ded_type ?? '');
+  return [
+    ['Type Code', String(r.deduction_code ?? '')], ['Type Description', String(r.display_name ?? '')],
+    ['Pre/Post Tax', side], ['UZIO Master Deductions List', String(r.master_name ?? '')],
+    ['UZIO Deduction Type', side], ['UZIO Deduction Name', String(r.display_name ?? '')],
+    ['UZIO Method', METHOD[String(r.deduction_method)] ?? enumLabel(r.deduction_method)],
+    ['Amount per pay', amount ?? ''], ['Auto-Sync from Uzio Benefits', yn(r.sync_from_benefit)],
+    ['Assign to all employees', yn(r.auto_assign_to_ee)],
+    ['Deduction Schedule', sched === 'All' ? 'Every Paycheck' : String(sched ?? '')],
+    ['Track arrears', yn(r.arrears_applicable)],
+    ['Arrears Processing Method', yes(r.arrears_applicable) ? enumLabel(r.arrears_processing_method) : ''],
+    ['W-2 Box', W2(r.w2_box, r.w2_label)],
+  ];
+}
+
+function helperContribution(r: Row, tierRows: Row[]): [string, string][] {
+  const formula = tierRows.map((t, i) =>
+    `${num(t.company_contribution_limit)}% of ${i === 0 ? 'first' : 'next'} ${num(t.ee_contribution_limit)}%`).join('; ');
+  const method = String(r.contritbution_method ?? '');
+  return [
+    ['Type Code', String(r.contribution_code ?? '')], ['Type Description', String(r.name ?? '')],
+    ['Contribution Name', String(r.name ?? '')], ['Link to Company Deduction', yn(r.link_contribution)],
+    ['Linked Deduction', String(r.linked_deduction ?? '')], ['Method', METHOD[method] ?? enumLabel(method)],
+    ['Formula', method === 'FORMULA' ? formula
+      : method === 'FIXED_AMOUNT' ? (money(r.contritbution_value) ?? '') : (pct(r.contritbution_percent_value) ?? '')],
+    ['Monthly Limit', money(r.monthly_limit) ?? ''], ['Annual Limit', money(r.annual_limit) ?? ''],
+    ['W-2 Box', W2(r.w2_box, r.w2_label)], ['Assign to all employees', yn(r.auto_assign_to_ee)],
+  ];
+}
+
 async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
   const log: string[] = [];
   if (!ctx.crm) throw new Error('CRM_URL / CRM_SERVICE_KEY are not set on this function');
@@ -1627,8 +1705,13 @@ async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
     queryIds.push(...r.queryIds);
     return r.rows;
   };
-  const [E, D, C, F, S] = [await read('earnings'), await read('deductions'), await read('contributions'),
-                           await read('federal'), await read('state')];
+  const [E, D, C, F, S, FM] = [await read('earnings'), await read('deductions'), await read('contributions'),
+                               await read('federal'), await read('state'), await read('formulas')];
+  const tiers = new Map<string, Row[]>();
+  for (const f of FM) {
+    const k = String(f.contribution_id);
+    tiers.set(k, [...(tiers.get(k) ?? []), f]);
+  }
   log.push(`prod: ${E.length} earnings, ${D.length} deductions, ${C.length} contributions, ` +
            `${F.length} federal tax setups, ${S.length} state tax settings`);
   const today = new Date().toISOString().slice(0, 10);
@@ -1637,7 +1720,7 @@ async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
   const send: Record<string, unknown>[] = [];
 
   for (const r of E) send.push({ ...base(r), category: 'Earning', name: r.name, code: r.earning_code ?? null,
-    active: true, updated_date: day(r.updated_date),
+    active: true, updated_date: day(r.updated_date), helper: helperEarning(r),
     settings: settings([
       ['Subject to federal tax', r.subject_to_federal_tax == null ? null : yes(r.subject_to_federal_tax) ? 'Yes' : 'No'],
       ['Subject to WC', yes(r.subject_to_wc)], ['Include in overtime', yes(r.include_in_overtime)],
@@ -1648,7 +1731,7 @@ async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
     ]) });
 
   for (const r of D) send.push({ ...base(r), category: 'Deduction', name: r.display_name, code: r.deduction_code ?? null,
-    active: !yes(r.discarded), updated_date: day(r.updated_date),
+    active: !yes(r.discarded), updated_date: day(r.updated_date), helper: helperDeduction(r),
     settings: settings([
       ['Type', r.ded_type ?? null], ['Method', words(r.deduction_method)],
       ['Amount per pay', money(r.amount_per_pay)], ['Percent per pay', pct(r.amount_per_pay_percent)],
@@ -1665,6 +1748,7 @@ async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
 
   for (const r of C) send.push({ ...base(r), category: 'Contribution', name: r.name, code: r.contribution_code ?? null,
     active: !yes(r.discarded), updated_date: day(r.updated_date),
+    helper: helperContribution(r, tiers.get(String(r.id)) ?? []),
     settings: settings([
       ['Method', words(r.contritbution_method)], ['Amount', money(r.contritbution_value)],
       ['Percent', pct(r.contritbution_percent_value)], ['Monthly limit', money(r.monthly_limit)],

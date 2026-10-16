@@ -822,8 +822,10 @@ async function paySetupTab() {
   const companies = [...new Map(rows.map((r) => [r.dsp_short_code, r.company_name])).entries()]
     .sort((a, b) => String(a[1]).localeCompare(String(b[1])));
   const dedTypes = [...new Set(rows.filter((r) => r.category === "Deduction").map((r) => (r.settings || {}).Type).filter(Boolean))].sort();
-  const f = { company: "", cat: "", type: "", discarded: false };
+  const f = { company: "", cat: "", type: "", discarded: false, view: "list" };
   $("#data-extra").innerHTML = `
+    <select id="ps-view" title="Setup Helper = the Earnings / Deductions / Contributions sheets, column for column">
+      <option value="list">View: List</option><option value="helper">View: Setup Helper</option></select>
     <select id="ps-company"><option value="">All companies (${companies.length})</option>
       ${companies.map(([code, name]) => `<option value="${esc(code)}">${esc(name)} (${esc(code)})</option>`).join("")}</select>
     <select id="ps-cat"><option value="">All categories</option>
@@ -836,8 +838,53 @@ async function paySetupTab() {
   const order = (r) => PS_CATS.indexOf(r.category);
   const chips = (s) => Object.entries(s || {}).map(([k, v]) =>
     `<span class="chip" title="${esc(k)}"><span class="muted">${esc(k)}:</span> ${esc(v)}</span>`).join(" ");
+  /* Setup Helper view: one company, three sheets, the helper's own columns. */
+  const SHEETS = [["Earnings", "Earning"], ["Deductions", "Deduction"], ["Contributions", "Contribution"]];
+  const helperRows = (cat) => rows.filter((r) => r.dsp_short_code === f.company && r.category === cat &&
+    (f.discarded || r.active) && Array.isArray(r.helper) && r.helper.length);
+  const renderHelper = () => {
+    if (!f.company) {
+      $("#data-body").innerHTML = `<p class="muted">Pick a company to see its setup in the Setup Helper layout.</p>`;
+      $("#data-count").textContent = "";
+      return;
+    }
+    const name = (companies.find(([k]) => k === f.company) || [])[1] || f.company;
+    const sheet = ([title, cat]) => {
+      const list = helperRows(cat);
+      if (!list.length) return `<h2>${title} <span class="muted" style="font-size:13px">(none)</span></h2>`;
+      const cols = list[0].helper.map(([c]) => c);
+      return `<h2>${title} <span class="muted" style="font-size:13px">(${list.length})</span></h2>
+        <div style="overflow-x:auto"><table class="grid"><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
+        <tbody>${list.map((r) => `<tr${r.active ? "" : ' class="muted"'}>${r.helper.map(([, v]) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    };
+    $("#data-body").innerHTML = `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <b>${esc(name)}</b><span class="muted" style="font-size:12px">${esc(f.company)} · as set up in Uzio today</span>
+        <button type="button" class="small" id="ps-xlsx" style="margin-left:auto">Download Setup Helper (.xlsx)</button></div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">Type Code and Type Description show Uzio's own code and name — the source system's (ADP/Paycom) codes are not kept in Uzio.</p>` +
+      SHEETS.map(sheet).join("");
+    $("#data-count").textContent = SHEETS.map(([t, c]) => `${t} ${helperRows(c).length}`).join(" · ");
+    $("#ps-xlsx").onclick = () => guard(async () => {
+      await ecrLoadLibs();
+      const wb = new ExcelJS.Workbook();
+      for (const [title, cat] of SHEETS) {
+        const list = helperRows(cat);
+        const ws = wb.addWorksheet(title);
+        if (!list.length) continue;
+        const cols = list[0].helper.map(([c]) => c);
+        ws.addRow(cols).font = { bold: true };
+        // Display Order, Rate and the like go in as numbers, as in the helper's own file.
+        list.forEach((r) => ws.addRow(r.helper.map(([, v]) => (/^-?\d+(\.\d+)?$/.test(String(v)) ? Number(v) : v))));
+        cols.forEach((c, i) => { ws.getColumn(i + 1).width = Math.min(40, Math.max(12, c.length + 2)); });
+      }
+      const buf = await wb.xlsx.writeBuffer();
+      ecrDownload(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        `${String(name).replace(/[^\w &.-]+/g, "").trim()}_UZIO_Setup.xlsx`);
+    });
+  };
+
   let page = 0;
   const render = () => {
+    if (f.view === "helper") return renderHelper();
     const list = rows.filter((r) =>
       (!dataQ || `${r.company_name} ${r.dsp_short_code} ${r.name} ${r.code || ""}`.toLowerCase().includes(dataQ)) &&
       (!f.company || r.dsp_short_code === f.company) &&
@@ -866,6 +913,7 @@ async function paySetupTab() {
   render.reset = () => { page = 0; };
   const bind = (id, key, prop = "value") => ($(id).onchange = (e) => { f[key] = e.target[prop]; page = 0; render(); });
   bind("#ps-company", "company"); bind("#ps-cat", "cat"); bind("#ps-type", "type"); bind("#ps-disc", "discarded", "checked");
+  bind("#ps-view", "view");
   return render;
 }
 

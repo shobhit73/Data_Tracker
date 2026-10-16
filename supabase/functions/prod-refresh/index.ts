@@ -50,6 +50,8 @@
  *   { "action": "ob_login", "username": "...", "password": "...", "fein": "..." }
  *   { "action": "api_runs", "fein": "123456789", "obToken": "..." }
  *   { "action": "api_run_detail", "runId": 4521, "obToken": "..." }
+ *   { "action": "api_run_progress", "runId": 4521, "obToken": "..." }   live counts, polled
+ *   { "action": "api_employee_search", "fein": "123456789", "query": "E1042", "obToken": "..." }
  * Read-only onboarding log lookups for the CRM's API Activity drawer, under
  * the reader's own Uzio sign-in; see logs.ts. An `action` body never runs a job.
  *
@@ -61,7 +63,7 @@
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { JOBS, type JobCtx, type JobResult } from './jobs.ts';
-import { apiRuns, apiRunDetail, obLogin } from './logs.ts';
+import { apiEmployeeSearch, apiRunDetail, apiRunProgress, apiRuns, obLogin } from './logs.ts';
 import { UzioAuthError } from './prodQuery.ts';
 import { ecrFind, ecrVersions, opsLogin } from './ecr.ts';
 
@@ -143,7 +145,7 @@ Deno.serve(async (req: Request) => {
   let body: { jobs?: string[]; dryRun?: boolean; taskEvidenceCap?: number;
               action?: string; fein?: string; runId?: number;
               username?: string; password?: string; obToken?: string;
-              opsToken?: string; feins?: string[]; ids?: string[]; employeeCode?: string } = {};
+              opsToken?: string; query?: string; feins?: string[]; ids?: string[]; employeeCode?: string } = {};
   try {
     const text = await req.text();
     if (text.trim()) body = JSON.parse(text);
@@ -184,6 +186,8 @@ Deno.serve(async (req: Request) => {
       const reads: Record<string, (ob: { token: string }) => Promise<{ queryIds?: string[] }>> = {
         api_runs: (ob) => apiRuns(ob, body.fein),
         api_run_detail: (ob) => apiRunDetail(ob, body.runId),
+        api_run_progress: (ob) => apiRunProgress(ob, body.runId),
+        api_employee_search: (ob) => apiEmployeeSearch(ob, body.fein, body.query),
       };
       const h = reads[body.action];
       if (!h) return json({ error: `unknown action: ${body.action}` }, 400);

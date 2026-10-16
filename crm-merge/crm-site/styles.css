@@ -302,6 +302,9 @@ td.logcell:hover .pill { outline: 2px solid var(--brand); outline-offset: 1px; }
 .ld-banner { background: #fdf3d7; color: #7a5c00; border-radius: var(--r-sm); padding: 8px 12px;
   font-size: 13px; margin-bottom: 10px; }
 .ld-banner.muted { background: var(--surface-cont-high); color: var(--muted); }
+.ld-live { background: #e6f0fd; color: #12407a; line-height: 1.6; }
+.ld-find { display: flex; gap: 8px; margin: 0 0 12px; }
+.ld-find input { flex: 1; max-width: none; }
 #ld-runs tr.sel { background: var(--sec-cont); }
 @media (max-width: 760px) { #log-drawer .ld-panel { border-radius: 0; } }
 

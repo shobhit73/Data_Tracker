@@ -407,7 +407,9 @@ function apiLogDrawer(client, module) {
     <div class="ld-body"></div></aside>`;
   document.body.appendChild(d);
   const body = d.querySelector(".ld-body");
-  const close = () => { d.remove(); document.removeEventListener("keydown", onKey); };
+  let liveTimer = null;
+  const stopLive = () => { if (liveTimer) clearInterval(liveTimer); liveTimer = null; };
+  const close = () => { stopLive(); d.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", onKey);
   d.querySelector(".ld-x").onclick = close;
@@ -448,6 +450,7 @@ function apiLogDrawer(client, module) {
   };
 
   const loadRuns = async () => {
+    stopLive();
     body.innerHTML = `<p class="muted">Reading the onboarding log…</p>`;
     try {
       const out = await callProdFn({ action: "api_runs", fein: client.fein, obToken: ssGet(OB_TOKEN_KEY) });
@@ -459,7 +462,11 @@ function apiLogDrawer(client, module) {
   const signedIn = () => `<div class="muted" style="font-size:12px;display:flex;gap:8px;align-items:center;margin-bottom:12px">
       Uzio: <b>${esc(ssGet(OB_USER_KEY) || "")}</b>
       <button type="button" class="linkish" id="ld-reload" style="font-size:12px">Reload</button>
-      <button type="button" class="linkish" id="ld-out" style="font-size:12px">Sign out of Uzio</button></div>`;
+      <button type="button" class="linkish" id="ld-out" style="font-size:12px">Sign out of Uzio</button></div>
+    <form id="ld-find" class="ld-find">
+      <input id="ld-q" type="search" maxlength="40" placeholder="Find one employee — ID from the file (e.g. G3ES7YLNU) or words from the reason">
+      <button type="submit" class="small">Find</button>
+    </form><div id="ld-find-out"></div>`;
 
   const renderRuns = () => {
     if (!runs.length) { body.innerHTML = signedIn() + `<p class="muted">Nothing has ever been pushed for this client.</p>`; wireTop(); return; }
@@ -486,10 +493,12 @@ function apiLogDrawer(client, module) {
         <span class="muted" style="font-size:12px">${istFmt(run.start)} IST · ${esc(run.by)} · ${count} run${count === 1 ? "" : "s"}</span></button>`;
     };
     body.innerHTML = signedIn() +
-      inflight.map((r) => `<div class="ld-banner">⏳ Run ${r.id} is still going (started ${istFmt(r.start)} IST by ${esc(r.by)}). Its API shows up once it finishes.</div>`).join("") +
+      inflight.map((r) => `<div class="ld-banner ld-live" data-live="${r.id}">⏳ <b>Run ${r.id} is running</b> — started ${istFmt(r.start)} IST by ${esc(r.by)}.
+        <span class="ld-live-n">Counting rows pushed to prod…</span></div>`).join("") +
       (died.length ? `<div class="ld-banner muted">${died.length} earlier run(s) never wrote a result — they died partway and are not counted.</div>` : "") +
       `<div class="ld-cards">${order.map(card).join("")}</div><div id="ld-runs"></div>`;
     wireTop();
+    startLive(inflight.map((r) => r.id));
     body.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => { pick = b.dataset.pick; renderRuns(); }));
     if (pick && latest[pick]) renderModuleRuns(pick);
     else if (pick) $("#ld-runs").innerHTML = `<p class="muted">${esc(modLabel(pick))} has never been run for this client.</p>`;
@@ -497,7 +506,84 @@ function apiLogDrawer(client, module) {
 
   const wireTop = () => {
     const r = $("#ld-reload"); if (r) r.onclick = loadRuns;
-    const o = $("#ld-out"); if (o) o.onclick = () => { ssSet(OB_TOKEN_KEY, null); showLogin(); };
+    const o = $("#ld-out"); if (o) o.onclick = () => { stopLive(); ssSet(OB_TOKEN_KEY, null); showLogin(); };
+    const f = $("#ld-find"); if (f) f.onsubmit = (e) => { e.preventDefault(); findEmployee($("#ld-q").value); };
+    // A finished live run or a card click re-renders the drawer; keep the search.
+    if (f && found) { $("#ld-q").value = found.q; $("#ld-find-out").innerHTML = found.html; wireClear(); }
+  };
+  let found = null;
+  const wireClear = () => {
+    const x = $("#ld-find-x");
+    if (x) x.onclick = () => { found = null; $("#ld-find-out").innerHTML = ""; $("#ld-q").value = ""; };
+  };
+
+  /* Live count for a run still going: the onboarding service logs every call
+     it makes to prod as it makes it, so POST calls = rows pushed so far.
+     Polls every 5s while the tab is visible; reloads the runs when it ends. */
+  const LIVE_MS = 5000;
+  const startLive = (ids) => {
+    stopLive();
+    if (!ids.length) return;
+    let busy = false;
+    const tick = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        for (const id of ids) {
+          const out = await callProdFn({ action: "api_run_progress", runId: id, obToken: ssGet(OB_TOKEN_KEY) });
+          if (out.run.status !== "RUNNING") { stopLive(); loadRuns(); return; }
+          const p = out.progress, el = d.querySelector(`[data-live="${id}"] .ld-live-n`);
+          if (!el) continue;
+          const mins = out.run.start ? Math.max(1, (Date.now() - new Date(out.run.start)) / 60000) : 1;
+          el.innerHTML = `<br><b style="font-size:16px">${p.posted.toLocaleString("en-IN")}</b> rows pushed to prod
+            ${p.employees ? ` · ${p.employees.toLocaleString("en-IN")} employees` : ""}
+            · ${p.calls.toLocaleString("en-IN")} API calls
+            ${p.failed ? ` · <span class="overdue">${p.failed} calls failed</span>` : ""}
+            · ~${Math.round(p.posted / mins)}/min
+            <span class="muted" style="font-size:12px">· last call ${p.lastCall ? istFmt(p.lastCall).split(", ").pop() : "—"} IST · refreshed ${istFmt(out.asOf).split(", ").pop()}</span>`;
+        }
+      } catch (e) {
+        stopLive();
+        if (e.needLogin) return showLogin(e.message);
+        d.querySelectorAll(".ld-live-n").forEach((el) => (el.innerHTML = `<br><span class="overdue">Live count stopped: ${esc(e.message)}</span>`));
+      } finally { busy = false; }
+    };
+    tick();
+    liveTimer = setInterval(tick, LIVE_MS);
+  };
+
+  /* One employee across every run of this client: which API, which run, why. */
+  const findEmployee = async (raw) => {
+    const box = $("#ld-find-out");
+    const q = String(raw || "").trim();
+    if (q.length < 2) { box.innerHTML = `<p class="muted" style="font-size:13px">Type at least 2 characters.</p>`; return; }
+    box.innerHTML = `<p class="muted">Searching every run for “${esc(q)}”…</p>`;
+    try {
+      const out = await callProdFn({ action: "api_employee_search", fein: client.fein, query: q, obToken: ssGet(OB_TOKEN_KEY) });
+      const m = out.matches || [];
+      if (!m.length) {
+        box.innerHTML = `<div class="ld-banner">No failure or warning mentions “${esc(out.query)}” in any run for this client.
+          If the ID is right, every push for this employee went through.
+          <button type="button" class="linkish" id="ld-find-x" style="font-size:12px">Clear</button></div>`;
+        found = { q, html: box.innerHTML }; wireClear();
+        return;
+      }
+      const runsHit = new Set(m.map((x) => x.runId)).size;
+      box.innerHTML = `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <b>“${esc(out.query)}”</b><span class="muted" style="font-size:12px">${out.total} line${out.total === 1 ? "" : "s"} in ${runsHit} run${runsHit === 1 ? "" : "s"}, newest first${out.total > m.length ? ` (first ${m.length} shown)` : ""}${out.runsSearched >= out.runCap ? ` · searched the latest ${out.runCap} matching runs` : ""}</span>
+          <span style="flex:1"></span><button type="button" class="linkish" id="ld-find-x" style="font-size:12px">Clear</button></div>
+        <div style="max-height:360px;overflow:auto;margin-top:8px"><table class="grid"><thead><tr>
+          <th>Run</th><th>When (IST)</th><th>API</th><th>Kind</th><th>Employee ID</th><th>Row</th><th>Reason</th></tr></thead><tbody>${
+          m.map((x) => `<tr><td>${x.runId}</td><td>${istFmt(x.start, true)}</td><td>${esc(modLabel(x.module))}</td>
+            <td>${x.kind === "error" ? dpill("Failed", "pill-cancelled") : dpill("Warning", "pill-onhold")}</td>
+            <td>${esc(x.employeeId ?? "")}</td><td>${x.row ?? ""}</td>
+            <td>${esc(x.reason)}${x.type ? ` <span class="tag">${esc(x.type)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div></div>`;
+      found = { q, html: box.innerHTML }; wireClear();
+    } catch (e) {
+      if (e.needLogin) return showLogin(e.message);
+      box.innerHTML = `<p class="overdue">${esc(e.message)}</p>`;
+    }
   };
 
   const renderModuleRuns = (m) => {

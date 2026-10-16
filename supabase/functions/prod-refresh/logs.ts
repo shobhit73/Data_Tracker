@@ -158,3 +158,79 @@ export async function apiRunDetail(ob: Ob, runId: unknown) {
     queryIds,
   };
 }
+
+/**
+ * Live progress of one run, from onboarding_automation_api_call_history --
+ * the onboarding service writes one row per outbound Uzio call as it happens
+ * (HttpCallAuditAspect), long before response_body gets its TotalMap.
+ * Counts only: request/response bodies carry employee PII and never leave.
+ * "posted" = POST calls, i.e. rows actually pushed into prod (PriorPayroll:
+ * one paystub save per employee per pay date; Census: one employee create).
+ */
+export async function apiRunProgress(ob: Ob, runId: unknown) {
+  const id = Number(runId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('runId must be a positive integer');
+  const [calls, run] = await Promise.all([
+    onboardingQuery(
+      `select process, count(*) calls, ` +
+      `sum(case when http_method = 'POST' then 1 else 0 end) posted, ` +
+      `sum(case when response_status >= 400 or error_reason is not null then 1 else 0 end) failed, ` +
+      `count(distinct substring(request_uri from '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')) employees, ` +
+      `min(start_time) first_call, max(coalesce(end_time, start_time)) last_call ` +
+      `from onboarding_automation_api_call_history where automation_id = ${id} group by process`,
+      { ...ob, size: 20 }),
+    onboardingQuery(`select id, start_time, end_time, response_body from ${TABLE} where id = ${id}`,
+      { ...ob, size: 1 }),
+  ]);
+  if (!run.rows.length) throw new Error(`no run with id ${id}`);
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  const per = calls.rows.map((r) => ({
+    process: String(r.process ?? ''), calls: n(r.calls), posted: n(r.posted), failed: n(r.failed),
+    employees: n(r.employees),
+    first: utc(r.first_call)?.toISOString() ?? null, last: utc(r.last_call)?.toISOString() ?? null,
+  }));
+  const sum = (k: 'calls' | 'posted' | 'failed' | 'employees') => per.reduce((a, p) => a + p[k], 0);
+  const lasts = per.map((p) => p.last).filter(Boolean).sort();
+  return {
+    run: summarize(run.rows[0]),
+    progress: { calls: sum('calls'), posted: sum('posted'), failed: sum('failed'), employees: sum('employees'),
+                lastCall: lasts.length ? lasts[lasts.length - 1] : null, byProcess: per },
+    asOf: new Date().toISOString(),
+    queryIds: [...calls.queryIds, ...run.queryIds],
+  };
+}
+
+/**
+ * Every failure/warning one employee hit across this client's runs. The
+ * search text narrows the SQL with LIKE (so megabyte blobs of other runs stay
+ * on the server), then the parsed rows are filtered again so only that
+ * employee's lines come back. Only [A-Za-z0-9 ._@-] survive -- it goes into SQL.
+ */
+const SEARCH_RUN_CAP = 40;
+export async function apiEmployeeSearch(ob: Ob, fein: unknown, query: unknown) {
+  const f = digits(fein);
+  if (!f) throw new Error('fein must be 9 digits');
+  const q = String(query ?? '').replace(/[^A-Za-z0-9 ._@-]/g, '').trim().slice(0, 40);
+  if (q.length < 2) throw new Error('type at least 2 letters or digits of the employee ID or name');
+  const like = q.toLowerCase();
+  const { rows, queryIds } = await onboardingQuery(
+    `select id, vendor, fein, start_time, end_time, created_by, response_body, error_messages, optional_validations ` +
+    `from ${TABLE} where fein = '${f}' and (lower(coalesce(error_messages, '')) like '%${like}%' ` +
+    `or lower(coalesce(optional_validations, '')) like '%${like}%') order by id desc limit ${SEARCH_RUN_CAP}`,
+    { ...ob, size: SEARCH_RUN_CAP });
+  const hit = (i: Issue) => String(i.employeeId ?? '').toLowerCase().includes(like) || i.reason.toLowerCase().includes(like);
+  const matches: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const s = summarize(row);
+    const add = (kind: string, list: Issue[]) => {
+      for (const i of list.filter(hit)) {
+        matches.push({ runId: s.id, start: s.start, by: s.by, runStatus: s.status, kind,
+                       module: i.module, row: i.row, employeeId: i.employeeId, type: i.type, reason: i.reason });
+      }
+    };
+    add('error', issueRows(row.error_messages));
+    add('warning', issueRows(row.optional_validations));
+  }
+  return { fein: f, query: q, runsSearched: rows.length, runCap: SEARCH_RUN_CAP,
+           matches: matches.slice(0, 500), total: matches.length, queryIds };
+}

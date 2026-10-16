@@ -1715,8 +1715,10 @@ async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
   log.push(`prod: ${E.length} earnings, ${D.length} deductions, ${C.length} contributions, ` +
            `${F.length} federal tax setups, ${S.length} state tax settings`);
   const today = new Date().toISOString().slice(0, 10);
+  // helper is null for tax rows: a PostgREST bulk insert rejects a batch whose
+  // objects do not all carry the same keys (PGRST102).
   const base = (r: Row) => ({ dsp_short_code: String(r.client_code ?? '').trim() || null,
-                              company_name: r.company_name ?? null, checked_date: today });
+                              company_name: r.company_name ?? null, checked_date: today, helper: null });
   const send: Record<string, unknown>[] = [];
 
   for (const r of E) send.push({ ...base(r), category: 'Earning', name: r.name, code: r.earning_code ?? null,
@@ -1797,6 +1799,11 @@ async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
     return { job: 'payroll_setup', ok: true, log, queryIds };
   }
   if (!send.length) throw new Error('no setup rows came back - refusing to empty client_pay_setup');
+  // Checked BEFORE the delete: a batch with mismatched keys fails at insert
+  // time, and by then the old rows would already be gone.
+  const shape = Object.keys(send[0]).sort().join(',');
+  const odd = send.find((r) => Object.keys(r).sort().join(',') !== shape);
+  if (odd) throw new Error(`row shape mismatch (${Object.keys(odd).sort().join(',')}) - nothing deleted`);
   await dash(crm, 'DELETE', 'client_pay_setup?id=gt.0');
   for (let i = 0; i < send.length; i += 500) await dash(crm, 'POST', 'client_pay_setup', send.slice(i, i + 500));
   log.push(`replaced client_pay_setup in the CRM`);

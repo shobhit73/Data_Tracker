@@ -1556,6 +1556,169 @@ async function ewaStatus(ctx: JobCtx): Promise<JobResult> {
   return { job: 'ewa_status', ok: true, log, queryIds };
 }
 
+/* ---------------------------------------------------------- payroll_setup */
+
+/**
+ * Company-level payroll setup for every Amazon-exchange employer: the earnings,
+ * deductions, contributions and taxes configured in Uzio, each with its
+ * settings. Asked for by Shobhit (16 Oct 2026) for the CRM's Data page.
+ *
+ * Tables (PayrollKit entities, all keyed on employer_org_ein = employer_organization.ein):
+ *   UPS_COMPANY_EARNING_DETAIL    CompanyEarningDetail
+ *   UPS_COMPANY_DEDUCTION         CompanyDeduction  (+ UPS_MASTER_DEDUCTION_TYPE for pre/post tax)
+ *   ups_Company_Contritbution     CompanyContribution (sic - Uzio's spelling)
+ *   UPS_TAX_DETAIL                CompanyTaxDetail  (federal: filing form, deposit schedule, exemptions)
+ *   UPS_STATE_TAXATION_DETAILS    StateTaxationDetails (key/value per state + tax type)
+ *
+ * State tax ACCOUNT numbers are tax identifiers: they are masked to the last
+ * four characters HERE, so the full number never reaches the CRM. Amounts are
+ * UzioCurrency (cents) and are shown in dollars.
+ *
+ * One flat row per item into the CRM's client_pay_setup, settings as a small
+ * label -> value object for display. Full replace, written straight to the CRM.
+ */
+type Row = Record<string, unknown>;
+
+/** `from <table> x` joined to its Amazon-exchange employer, plus optional extra joins. */
+const psFrom = (table: string, joins = '') =>
+  `from ${table} x join employer_organization eo on eo.ein = x.employer_org_ein ` +
+  `and eo.exchange_id = '${AMAZON_EXCHANGE}' and eo.deleted = 0 ${joins} ` +
+  `where coalesce(x.deleted, 0) != 1`;
+const PS_SQL = {
+  earnings: `select eo.client_code, eo.company_name, x.* ${psFrom('ups_company_earning_detail')} ` +
+    `order by eo.client_code, x.display_order, x.id`,
+  deductions: `select eo.client_code, eo.company_name, t.display_name as ded_type, x.* ` +
+    psFrom('ups_company_deduction', 'left join ups_master_deduction_type t on t.id = x.master_ded_type_identifier') +
+    ` order by eo.client_code, x.id`,
+  contributions: `select eo.client_code, eo.company_name, cd.display_name as linked_deduction, x.* ` +
+    psFrom('ups_company_contritbution', 'left join ups_company_deduction cd on cd.id = x.company_deduction_id') +
+    ` order by eo.client_code, x.id`,
+  federal: `select eo.client_code, eo.company_name, x.* ${psFrom('ups_tax_detail')} order by eo.client_code, x.id`,
+  state: `select eo.client_code, eo.company_name, x.state, x.master_tax_type, x.key, x.value, x.effective_date, ` +
+    `x.updated_date ${psFrom('ups_state_taxation_details')} order by eo.client_code, x.state, x.master_tax_type, x.id`,
+};
+
+const yes = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
+const money = (v: unknown) => (v == null || v === '' || Number(v) === 0 ? null : `$${(Number(v) / 100).toFixed(2)}`);
+const pct = (v: unknown) => (v == null || v === '' || Number(v) === 0 ? null : `${Number(v)}%`);
+const words = (v: unknown) => v == null || v === '' ? null
+  : String(v).toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+const day = (v: unknown) => (v ? String(v).slice(0, 10) : null);
+const mask = (v: unknown) => { const s = String(v ?? '').trim(); return !s ? null : s.length <= 4 ? '****' : `****${s.slice(-4)}`; };
+/** Settings object: drops empty values so the UI shows only what is set. */
+function settings(pairs: [string, unknown][]) {
+  const o: Record<string, string> = {};
+  for (const [k, v] of pairs) {
+    if (v === null || v === undefined || v === '' || v === false) continue;
+    o[k] = v === true ? 'Yes' : String(v);
+  }
+  return o;
+}
+const w2 = (box: unknown, label: unknown) =>
+  !box || box === 'NOT_REQUIRED' ? null : `${String(box).replace('BOX', 'Box ')}${label ? ' ' + label : ''}`;
+
+async function payrollSetup(ctx: JobCtx): Promise<JobResult> {
+  const log: string[] = [];
+  if (!ctx.crm) throw new Error('CRM_URL / CRM_SERVICE_KEY are not set on this function');
+  const crm = { dashUrl: ctx.crm.url, dashKey: ctx.crm.key, creds: ctx.creds, dryRun: ctx.dryRun } as JobCtx;
+  const queryIds: string[] = [];
+  const read = async (k: keyof typeof PS_SQL) => {
+    const r = await prodQuery(PS_SQL[k], ctx.creds);
+    queryIds.push(...r.queryIds);
+    return r.rows;
+  };
+  const [E, D, C, F, S] = [await read('earnings'), await read('deductions'), await read('contributions'),
+                           await read('federal'), await read('state')];
+  log.push(`prod: ${E.length} earnings, ${D.length} deductions, ${C.length} contributions, ` +
+           `${F.length} federal tax setups, ${S.length} state tax settings`);
+  const today = new Date().toISOString().slice(0, 10);
+  const base = (r: Row) => ({ dsp_short_code: String(r.client_code ?? '').trim() || null,
+                              company_name: r.company_name ?? null, checked_date: today });
+  const send: Record<string, unknown>[] = [];
+
+  for (const r of E) send.push({ ...base(r), category: 'Earning', name: r.name, code: r.earning_code ?? null,
+    active: true, updated_date: day(r.updated_date),
+    settings: settings([
+      ['Subject to federal tax', r.subject_to_federal_tax == null ? null : yes(r.subject_to_federal_tax) ? 'Yes' : 'No'],
+      ['Subject to WC', yes(r.subject_to_wc)], ['Include in overtime', yes(r.include_in_overtime)],
+      ['Part of other earning', yes(r.part_of_other_earning)], ['Disposable', yes(r.disposable)],
+      ['Amount multiplier', r.amount_multiplier ? String(r.amount_multiplier) : null],
+      ['W-2', w2(r.w2_box, r.w2_label)], ['Default', yes(r.is_default)], ['Editable', yes(r.is_editable)],
+      ['Linked earning', r.linked_earning ?? null],
+    ]) });
+
+  for (const r of D) send.push({ ...base(r), category: 'Deduction', name: r.display_name, code: r.deduction_code ?? null,
+    active: !yes(r.discarded), updated_date: day(r.updated_date),
+    settings: settings([
+      ['Type', r.ded_type ?? null], ['Method', words(r.deduction_method)],
+      ['Amount per pay', money(r.amount_per_pay)], ['Percent per pay', pct(r.amount_per_pay_percent)],
+      ['W-2', w2(r.w2_box, r.w2_label)], ['Auto-assign to employees', yes(r.auto_assign_to_ee)],
+      ['Weekly schedule', r.schedule_for_weekly ?? null], ['Biweekly schedule', r.schedule_for_biweekly ?? null],
+      ['Semimonthly schedule', r.schedule_for_semimonthly ?? null],
+      ['Paycheck minimum', yes(r.assign_paycheck_limit) ? money(r.paycheck_minimum) : null],
+      ['Paycheck maximum', yes(r.assign_paycheck_limit) ? money(r.paycheck_maximum) : null],
+      ['Arrears', yes(r.arrears_applicable) ? (words(r.arrears_processing_method) ?? 'Yes') : null],
+      ['Garnishment type', words(r.garnishment_type) ?? r.other_garnishment_type ?? null],
+      ['Plan type', words(r.plan_type)], ['Plan ID', r.plan_id ?? null],
+      ['Synced from benefits', yes(r.sync_from_benefit)], ['System seeded', yes(r.system_seeded)],
+    ]) });
+
+  for (const r of C) send.push({ ...base(r), category: 'Contribution', name: r.name, code: r.contribution_code ?? null,
+    active: !yes(r.discarded), updated_date: day(r.updated_date),
+    settings: settings([
+      ['Method', words(r.contritbution_method)], ['Amount', money(r.contritbution_value)],
+      ['Percent', pct(r.contritbution_percent_value)], ['Monthly limit', money(r.monthly_limit)],
+      ['Annual limit', money(r.annual_limit)], ['W-2', w2(r.w2_box, r.w2_label)],
+      ['Linked deduction', r.linked_deduction ?? null], ['Linked', yes(r.link_contribution)],
+      ['Auto-assign to employees', yes(r.auto_assign_to_ee)], ['Applies to S-corp', yes(r.applicable_s_corp)],
+    ]) });
+
+  for (const r of F) send.push({ ...base(r), category: 'Federal tax', name: 'Federal tax setup', code: null,
+    active: true, updated_date: day(r.updated_date),
+    settings: settings([
+      ['Company type', r.company_type ?? null],
+      ['Filing form', r.filing_form ? `${r.filing_form}${r.ff_effective_date ? ' from ' + day(r.ff_effective_date) : ''}` : null],
+      ['Deposit schedule', r.tax_deposite_schedule ? `${words(r.tax_deposite_schedule)}${r.tds_effective_date ? ' from ' + day(r.tds_effective_date) : ''}` : null],
+      ['FUTA exempt', yes(r.is_futa_exempted_x)], ['Social Security exempt', yes(r.sst_exemption_x)],
+      ['Medicare exempt', yes(r.medicare_exemption_x)], ['S-corp shareholders', yes(r.has_scorp_shareholders)],
+      ['Executive employees', yes(r.has_executive_employees)], ['Receives W-2 copy', yes(r.receive_w2_copy)],
+      ['Last check number', r.last_check_number ? String(r.last_check_number) : null],
+    ]) });
+
+  // State taxes are key/value rows; one item per company + state + tax type.
+  const groups = new Map<string, { r: Row; kv: [string, unknown][]; eff: string | null; upd: string | null }>();
+  for (const r of S) {
+    const k = `${r.client_code}|${r.company_name}|${r.state}|${r.master_tax_type}`;
+    const g = groups.get(k) ?? { r, kv: [], eff: null, upd: null };
+    const key = String(r.key ?? '');
+    const secret = /ACCOUNT|NUMBER|_ID$|^ID$|EIN|PIN|PASSWORD/i.test(key);
+    g.kv.push([words(key) ?? key, secret ? mask(r.value) : r.value]);
+    const e = day(r.effective_date), u = day(r.updated_date);
+    if (e && (!g.eff || e > g.eff)) g.eff = e;
+    if (u && (!g.upd || u > g.upd)) g.upd = u;
+    groups.set(k, g);
+  }
+  for (const g of groups.values()) send.push({ ...base(g.r), category: 'State tax',
+    // SUTA / POP / SDI are acronyms; longer codes read as words.
+    name: `${g.r.state ?? '?'} · ${String(g.r.master_tax_type ?? '').length <= 4 ? String(g.r.master_tax_type ?? '')
+      : words(g.r.master_tax_type) ?? ''}`.trim(), code: String(g.r.master_tax_type ?? '') || null,
+    active: true, updated_date: g.upd,
+    settings: settings([...g.kv.map(([k, v]) => [k, v === 'true' ? 'Yes' : v === 'false' ? 'No' : v] as [string, unknown]),
+                        ['Effective', g.eff]]) });
+
+  const companies = new Set(send.map((r) => r.dsp_short_code)).size;
+  log.push(`${send.length} item(s) across ${companies} companies`);
+  if (ctx.dryRun) {
+    log.push(`DRY RUN - would replace client_pay_setup in the CRM.`);
+    return { job: 'payroll_setup', ok: true, log, queryIds };
+  }
+  if (!send.length) throw new Error('no setup rows came back - refusing to empty client_pay_setup');
+  await dash(crm, 'DELETE', 'client_pay_setup?id=gt.0');
+  for (let i = 0; i < send.length; i += 500) await dash(crm, 'POST', 'client_pay_setup', send.slice(i, i + 500));
+  log.push(`replaced client_pay_setup in the CRM`);
+  return { job: 'payroll_setup', ok: true, log, queryIds };
+}
+
 /* ------------------------------------------------------------- the registry */
 
 export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
@@ -1571,6 +1734,7 @@ export const JOBS: Record<string, (ctx: JobCtx) => Promise<JobResult>> = {
   api_activity: apiActivity,
   // Writes the CRM directly, so it does not depend on push_to_crm's order.
   ewa_status: ewaStatus,
+  payroll_setup: payrollSetup,
   // Last: it copies whatever is in our Supabase at that moment, so anything
   // written after it would not reach the CRM until Apps Script's 17:30 run.
   push_to_crm: pushToCrm,

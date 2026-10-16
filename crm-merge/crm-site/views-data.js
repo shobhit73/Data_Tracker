@@ -11,6 +11,7 @@ const DATA_TABS = [
   ["docs", "Documents"],
   ["hist", "Historical"],
   ["ewa", "EWA"],
+  ["paysetup", "Payroll setup"],
 ];
 
 /* Onboarding-API modules in the order they are actually run, not alphabetical. */
@@ -121,7 +122,7 @@ function refreshControl(batches, label) {
       at the moment it runs */
 const REFRESH_EVERYTHING = [
   ["backfill_fein", "work_locations", "data_coverage",
-   "document_counts", "system_activity", "payroll_health", "api_activity", "ewa_status"],
+   "document_counts", "system_activity", "payroll_health", "api_activity", "ewa_status", "payroll_setup"],
   ["load_history"],
   ["push_to_crm"],
   // Evidence-based task flips, after the fresh copy has landed here.
@@ -240,7 +241,7 @@ Views.renderData = async (view, tab) => {
     renderBody();
   };
 
-  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab, ewa: ewaTab };
+  const renderers = { api: apiTab, health: healthTab, coverage: coverageTab, docs: docsTab, hist: histTab, ewa: ewaTab, paysetup: paySetupTab };
   renderBody = await renderers[tab]();
   renderBody();
 };
@@ -808,6 +809,62 @@ async function ewaTab() {
   $("#ewa-prov").onchange = (e) => { f.prov = e.target.value; page = 0; render(); };
   $("#ewa-status").onchange = (e) => { f.status = e.target.value; page = 0; render(); };
   wireDateFilter("ewad", dr, () => { page = 0; render(); });
+  return render;
+}
+
+/* --- Payroll setup: every earning, deduction, contribution and tax set up at
+   company level in Uzio for each Amazon DSP, with its settings, from the
+   payroll_setup job. State tax account numbers arrive masked. --- */
+const PS_CATS = ["Earning", "Deduction", "Contribution", "Federal tax", "State tax"];
+async function paySetupTab() {
+  const rows = await Store.listPaySetup();
+  const companies = [...new Map(rows.map((r) => [r.dsp_short_code, r.company_name])).entries()]
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  const dedTypes = [...new Set(rows.filter((r) => r.category === "Deduction").map((r) => (r.settings || {}).Type).filter(Boolean))].sort();
+  const f = { company: "", cat: "", type: "", discarded: false };
+  $("#data-extra").innerHTML = `
+    <select id="ps-company"><option value="">All companies (${companies.length})</option>
+      ${companies.map(([code, name]) => `<option value="${esc(code)}">${esc(name)} (${esc(code)})</option>`).join("")}</select>
+    <select id="ps-cat"><option value="">All categories</option>
+      ${PS_CATS.map((c) => `<option>${c}</option>`).join("")}</select>
+    <select id="ps-type"><option value="">Any deduction type</option>
+      ${dedTypes.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
+    <label class="chk"><input type="checkbox" id="ps-disc"> Show discarded</label>`;
+  $("#data-extra").appendChild(refreshControl(["payroll_setup"]));
+
+  const order = (r) => PS_CATS.indexOf(r.category);
+  const chips = (s) => Object.entries(s || {}).map(([k, v]) =>
+    `<span class="chip" title="${esc(k)}"><span class="muted">${esc(k)}:</span> ${esc(v)}</span>`).join(" ");
+  let page = 0;
+  const render = () => {
+    const list = rows.filter((r) =>
+      (!dataQ || `${r.company_name} ${r.dsp_short_code} ${r.name} ${r.code || ""}`.toLowerCase().includes(dataQ)) &&
+      (!f.company || r.dsp_short_code === f.company) &&
+      (!f.cat || r.category === f.cat) &&
+      (!f.type || (r.category === "Deduction" && (r.settings || {}).Type === f.type)) &&
+      (f.discarded || r.active))
+      .sort((a, b) => String(a.company_name).localeCompare(String(b.company_name)) || order(a) - order(b) ||
+        String(a.name).localeCompare(String(b.name)));
+    const pg = pageSlice(list, page); page = pg.p;
+    $("#data-body").innerHTML = `<div style="overflow-x:auto"><table class="grid"><thead><tr>
+        <th>Client</th><th>Category</th><th>Name</th><th class="notes-cell">Settings</th><th>Updated</th>
+      </tr></thead><tbody>${pg.rows.map((r) => `<tr${r.active ? "" : ' class="muted"'}>
+        <td><b>${esc(r.company_name || "")}</b><div class="muted" style="font-size:11px">${esc(r.dsp_short_code || "")}</div></td>
+        <td>${esc(r.category)}</td>
+        <td><b>${esc(r.name || "")}</b>${r.code ? `<div class="muted" style="font-size:11px">${esc(r.code)}</div>` : ""}
+          ${r.active ? "" : ` ${dpill("Discarded", "pill-na")}`}</td>
+        <td class="notes-cell" style="max-width:560px">${chips(r.settings) || `<span class="muted">—</span>`}</td>
+        <td>${fmtDate(r.updated_date)}</td></tr>`).join("") ||
+      `<tr><td colspan="5" class="muted">${rows.length ? "Nothing matches." : "No payroll setup yet — press Refresh from Uzio."}</td></tr>`}</tbody></table></div>` +
+      pagerHtml("ps", pg.p, pg.pages, list.length);
+    hookPager("ps", (d) => { page += d; render(); });
+    const n = (c) => list.filter((r) => r.category === c).length;
+    $("#data-count").textContent = `${list.length} items · ` +
+      PS_CATS.map((c) => `${c.endsWith("tax") ? c : c + "s"} ${n(c)}`).join(" · ");
+  };
+  render.reset = () => { page = 0; };
+  const bind = (id, key, prop = "value") => ($(id).onchange = (e) => { f[key] = e.target[prop]; page = 0; render(); });
+  bind("#ps-company", "company"); bind("#ps-cat", "cat"); bind("#ps-type", "type"); bind("#ps-disc", "discarded", "checked");
   return render;
 }
 

@@ -188,6 +188,17 @@ window.Store = (() => {
   const listEwa              = () => listReport("client_ewa", "company_name");
   const listSystemActivity   = () => listReport("client_system_activity", "dsp_short_code");
   const listClientProfiles   = () => listReport("client_profile", "dsp_short_code");
+  /* ~4,300 rows: PostgREST answers at most 1,000 per request, so page through. */
+  async function listPaySetup() {
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from("client_pay_setup").select("*")
+        .order("id").range(from, from + 999);
+      if (error) fail(error);
+      out.push(...data);
+      if (data.length < 1000) return out;
+    }
+  }
 
   /* Everything the Client 360 platform panel needs, keyed by the CRM client's
      short code. Reads warn instead of failing so a reporting table that does
@@ -290,6 +301,6 @@ window.Store = (() => {
            listOpenTasks, listDoneTasks, getTeams, listLastActivity, getActivity,
            listApiActivity, listPayrollHealth, listDataCoverage,
            listDocumentTransfers, listDocumentCounts,
-           listHistClients, listHistStatus, listHistOutOfScope, listEwa, listSystemActivity, listClientProfiles,
+           listHistClients, listHistStatus, listHistOutOfScope, listEwa, listSystemActivity, listClientProfiles, listPaySetup,
            getPlatformBundle, getClientFein };
 })();

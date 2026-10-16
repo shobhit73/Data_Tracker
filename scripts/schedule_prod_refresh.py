@@ -27,7 +27,7 @@ BATCHES = [
     ("prod-refresh-daily-1", "5 11 * * *",
      '{"jobs":["backfill_fein","work_locations","data_coverage",'
      '"document_counts","system_activity","payroll_health","api_activity",'
-     '"ewa_status"]}'),
+     '"ewa_status","payroll_setup"]}'),
     ("prod-refresh-daily-2", "15 11 * * *", '{"jobs":["load_history"]}'),
     ("prod-refresh-daily-3", "22 11 * * *", '{"jobs":["push_to_crm"]}'),
     # 17:55 IST - after Apps Script's 17:30 run has refreshed the CRM's
